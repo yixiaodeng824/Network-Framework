@@ -18,27 +18,27 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\MessageQueue.cpp">
+    <ClCompile Include="src\thread\MessageQueue.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="src\work_thread.cpp">
+    <ClCompile Include="src\thread\work_thread.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="src\ysj.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="src\ThreadPool.cpp">
+    <ClCompile Include="src\thread\ThreadPool.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\MessageQueue.h">
+    <ClInclude Include="src\thread\MessageQueue.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="src\work_thread.h">
+    <ClInclude Include="src\thread\work_thread.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="src\ThreadPool.h">
+    <ClInclude Include="src\thread\ThreadPool.h">
       <Filter>src</Filter>
     </ClInclude>
   </ItemGroup>
