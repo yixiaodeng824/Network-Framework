@@ -5,6 +5,7 @@
 #include <memory>
 #include <future>
 class ThreadPool
+
 {
 public:
 	explicit ThreadPool(size_t threadCount = 0);

@@ -7,6 +7,8 @@
 bin/
 lib/
 obj/
+bin_linux/
+obj_linux/
 x64/
 Debug/
 Release/
