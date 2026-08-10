@@ -55,8 +55,7 @@ void  EpollServer::handleClient(int fd) {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
 		if (len <= 0) {
-			bool flag = recv_box_.clear(fd);
-			if (flag) cout << "client disconnected, fd: " << fd << endl;
+			LOG_INFO ( "client disconnected, fd: %d" ,fd );
 			epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
 			close(fd);
 		}
