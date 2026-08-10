@@ -9,6 +9,7 @@ private:
 	void run();
 	void acceptNewClient();
 	void handleClient(int fd);
+	int port_;
 	int listen_fd_;
 	int epfd_;
 	ThreadPool& pool_;

@@ -1,22 +1,23 @@
 #include "epoll_server.h"
+#include "Logger.h"
 #include <sys/socket.h>
-#include <iostream>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <cstring>
+#include <cerrno>
 using namespace std;
-EpollServer::EpollServer(int port, ThreadPool& pool):pool_(pool) {
+EpollServer::EpollServer(int port, ThreadPool& pool):port_(port), pool_(pool) {
 	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-	if (listen_fd_ < 0) { cerr << "¼àÌýÊ§°Ü";exit(1); }
+	if (listen_fd_ < 0) { LOG_ERROR("socket failed: %s", strerror(errno)); exit(1); }
 	sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_port = htons(port);
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = INADDR_ANY;
 	int opt = 1;
-	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));//µ÷ÕûsocketÐÐÎª£¬ÈÃÄÚºË¸úÎÒÎÒµÄÇëÇó²Ù×÷
+	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));//è°ƒæ•´socketè¡Œä¸ºï¼Œè®©å†…æ ¸è·Ÿæˆ‘æˆ‘çš„è¯·æ±‚æ“ä½œ
 	if (bind(listen_fd_, (sockaddr*) &addr, sizeof(addr)) < 0) {
-		cerr << "bind failed" << endl;
+		LOG_ERROR("bind failed: %s", strerror(errno));
 		exit(1);
 	}
 	epfd_ = epoll_create(1);
@@ -39,7 +40,7 @@ void EpollServer::run() {
 
 void EpollServer::start() {
 	listen(listen_fd_, 5);
-	cout << "start listening " << endl;
+	LOG_INFO("start listening on port %d", port_);
 	epoll_event ev;
 	ev.events = EPOLLIN | EPOLLONESHOT;
 	ev.data.fd = listen_fd_;
@@ -52,13 +53,13 @@ void  EpollServer::handleClient(int fd) {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
 		if (len <= 0) {
-			cout << "client" << fd << "closed";
+			LOG_INFO("client fd=%d closed", fd);
 			epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
 			close(fd);
 		}
 		else {
-			send(fd, buf, len, 0);//ÕâµØ·½ÒÔºóÌæ»»³ÉÒµÎñº¯Êý
-			//ÐèÒªÖØÐÂµÇ¼Ç
+			send(fd, buf, len, 0);//è¿™åœ°æ–¹ä»¥åŽæ›¿æ¢æˆä¸šåŠ¡å‡½æ•°
+			//éœ€è¦é‡æ–°ç™»è®°
 			epoll_event nev;
 			nev.data.fd = fd;
 			nev.events = EPOLLIN | EPOLLONESHOT;
@@ -69,10 +70,15 @@ void  EpollServer::handleClient(int fd) {
 
 void EpollServer::acceptNewClient() {
 	int client_fd = accept(listen_fd_, nullptr, nullptr);
+	if (client_fd < 0) {
+		LOG_ERROR("accept failed: %s", strerror(errno));
+		return;
+	}
+	LOG_DEBUG("new client fd=%d", client_fd);
 	epoll_event nev;
 	nev.data.fd = client_fd;
 	nev.events = EPOLLIN | EPOLLONESHOT;
-	epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);//µÚÈý¸ö²ÎÊý¶ÔË­²Ù×÷
+	epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);//ç¬¬ä¸‰ä¸ªå‚æ•°å¯¹è°æ“ä½œ
 
 	epoll_event nev1;
 	nev1.data.fd = listen_fd_;
