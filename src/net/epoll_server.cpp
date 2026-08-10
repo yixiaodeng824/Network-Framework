@@ -4,6 +4,8 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <cstring>
+#include <cstdint>
+#include <arpa/inet.h>
 using namespace std;
 EpollServer::EpollServer(int port, ThreadPool& pool):pool_(pool) {
 	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
@@ -52,12 +54,14 @@ void  EpollServer::handleClient(int fd) {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
 		if (len <= 0) {
-			cout << "client" << fd << "closed";
+			bool flag = recv_box_.clear(fd);
+			if (flag) cout << "client disconnected, fd: " << fd << endl;
 			epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
 			close(fd);
 		}
 		else {
-			send(fd, buf, len, 0);//这地方以后替换成业务函数
+			recv_box_.push(fd, std::string(buf, len));//消息先进入仓库
+			processBufferedData(fd);//处理仓库中的消息，防止消息粘包半包
 			//需要重新登记
 			epoll_event nev;
 			nev.data.fd = fd;
@@ -79,7 +83,21 @@ void EpollServer::acceptNewClient() {
 	nev1.events = EPOLLIN | EPOLLONESHOT;
 	epoll_ctl(epfd_, EPOLL_CTL_MOD,listen_fd_ , &nev1);
 }
-
+void EpollServer::processBufferedData(int fd) {
+	while (true) {
+		auto this_box = recv_box_.get(fd);
+		uint32_t len;//消息体长度,大端
+		memcpy(&len, this_box.data(), 4);
+		len = ntohl(len);//转成小端
+		if (this_box.length() < 4|| this_box.length() < 4+len)	break;
+		//处理回显
+		string msg = this_box.substr(4, len);//获取消息体
+		uint32_t resp_len = htonl(msg.size());//将主机字节序转为网络字节序，发送给客户端
+		send(fd, &resp_len, 4, 0);
+		send(fd, msg.data(), msg.size(), 0);
+		recv_box_.erase(fd, 4 + len);//扔掉箱子前4+len字节的消息
+	}
+}
 EpollServer::~EpollServer(){
 	close(epfd_);
 	close(listen_fd_);
