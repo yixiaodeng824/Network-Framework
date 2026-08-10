@@ -4,6 +4,8 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <cstring>
+#include <cstdint>
+#include <arpa/inet.h>
 #include <cerrno>
 using namespace std;
 EpollServer::EpollServer(int port, ThreadPool& pool):port_(port), pool_(pool) {
@@ -15,7 +17,7 @@ EpollServer::EpollServer(int port, ThreadPool& pool):port_(port), pool_(pool) {
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = INADDR_ANY;
 	int opt = 1;
-	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));//调整socket行为，让内核跟我我的请求操作
+	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 	if (bind(listen_fd_, (sockaddr*) &addr, sizeof(addr)) < 0) {
 		LOG_ERROR("bind failed: %s", strerror(errno));
 		exit(1);
@@ -53,13 +55,15 @@ void  EpollServer::handleClient(int fd) {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
 		if (len <= 0) {
-			LOG_INFO("client fd=%d closed", fd);
+			bool flag = recv_box_.clear(fd);
+			if (flag) cout << "client disconnected, fd: " << fd << endl;
 			epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
 			close(fd);
 		}
 		else {
-			send(fd, buf, len, 0);//这地方以后替换成业务函数
-			//需要重新登记
+			recv_box_.push(fd, std::string(buf, len));
+			processBufferedData(fd);
+
 			epoll_event nev;
 			nev.data.fd = fd;
 			nev.events = EPOLLIN | EPOLLONESHOT;
@@ -78,14 +82,28 @@ void EpollServer::acceptNewClient() {
 	epoll_event nev;
 	nev.data.fd = client_fd;
 	nev.events = EPOLLIN | EPOLLONESHOT;
-	epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);//第三个参数对谁操作
+	epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);
 
 	epoll_event nev1;
 	nev1.data.fd = listen_fd_;
 	nev1.events = EPOLLIN | EPOLLONESHOT;
 	epoll_ctl(epfd_, EPOLL_CTL_MOD,listen_fd_ , &nev1);
 }
+void EpollServer::processBufferedData(int fd) {
+	while (true) {
+		auto this_box = recv_box_.get(fd);
+		uint32_t len;
+		memcpy(&len, this_box.data(), 4);
+		len = ntohl(len);
+		if (this_box.length() < 4|| this_box.length() < 4+len)	break;
 
+		string msg = this_box.substr(4, len);
+		uint32_t resp_len = htonl(msg.size());
+		send(fd, &resp_len, 4, 0);
+		send(fd, msg.data(), msg.size(), 0);
+		recv_box_.erase(fd, 4 + len);
+	}
+}
 EpollServer::~EpollServer(){
 	close(epfd_);
 	close(listen_fd_);
