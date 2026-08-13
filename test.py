@@ -4,7 +4,7 @@ import struct
 import time
 import threading
 
-HOST = '192.168.130.128'   # ������� IP
+HOST = '192.168.159.128'   # ������� IP
 PORT = 8888
 
 def build_msg(payload):

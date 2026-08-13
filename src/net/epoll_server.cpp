@@ -4,28 +4,55 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <cstring>
+#include <cstdint>
+#include <arpa/inet.h>
 #include <cerrno>
+#include <csignal>
 using namespace std;
+atomic<bool> EpollServer::stop_{ false };
+
 EpollServer::EpollServer(int port, ThreadPool& pool):port_(port), pool_(pool) {
+	//´´½¨Ì×½Ó×Ö
 	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
 	if (listen_fd_ < 0) { LOG_ERROR("socket failed: %s", strerror(errno)); exit(1); }
+	//È·¶¨Òª¼àÌıµÄ¶Ë¿Ú
 	sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_port = htons(port);
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = INADDR_ANY;
 	int opt = 1;
-	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));//è°ƒæ•´socketè¡Œä¸ºï¼Œè®©å†…æ ¸è·Ÿæˆ‘æˆ‘çš„è¯·æ±‚æ“ä½œ
+	//ÉèÖÃÌ×½Ó×ÖÑ¡Ïî£¬ÔÊĞíµØÖ·ÖØÓÃ
+	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+	//°ó¶¨¶Ë¿Ú
 	if (bind(listen_fd_, (sockaddr*) &addr, sizeof(addr)) < 0) {
 		LOG_ERROR("bind failed: %s", strerror(errno));
 		exit(1);
 	}
+	//´´½¨ÂÖÑ¯Æ÷
 	epfd_ = epoll_create(1);
 }
 
+void EpollServer::epollserver_exit() {
+	LOG_INFO("server stopping, closing connections...");
+	//ÏÈ¹ØÏß³Ì³Ø
+	pool_.close();
+	//clients²¢·ÇÏß³Ì°²È«£¬¶ÔËû²Ù×÷Òª¼ÓËø
+	{
+		lock_guard<mutex>	cltmtx(client_mutex);
+		for (auto& fd : clients_) {
+			close(fd);
+		}
+		clients_.clear();
+	}
+	recv_box_.clearAll();
+	LOG_INFO("server stopped.");
+
+}
+
 void EpollServer::run() {
-	while (true) {
-		int n = epoll_wait(epfd_, events_, 64, -1);
+	while (!stop_) {
+		int n = epoll_wait(epfd_, events_, 64, 100);//×èÈûµÈ´ıÊÂ¼ş·¢Éú
 		for (int i = 0;i < n;i++) {
 			int fd = events_[i].data.fd;
 			if (fd == listen_fd_) {
@@ -36,16 +63,25 @@ void EpollServer::run() {
 			}
 		}
 	}
+	epollserver_exit();
 }
 
 void EpollServer::start() {
+	//¿ªÊ¼¼àÌı
 	listen(listen_fd_, 5);
 	LOG_INFO("start listening on port %d", port_);
+	//ÏÈ°Ñ¼àÌıÌ×½Ó×Ö¼ÓÈëepollÊÂ¼şÁĞ±í
 	epoll_event ev;
 	ev.events = EPOLLIN | EPOLLONESHOT;
 	ev.data.fd = listen_fd_;
 	epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd_, &ev);
+	signal(SIGINT, handle_signal);
+	signal(SIGTERM, handle_signal);
 	run();
+}
+//ÉèÖÃÍË³ö±êÊ¶
+void EpollServer::handle_signal(int) {
+	stop_ = true;
 }
 
 void  EpollServer::handleClient(int fd) {
@@ -53,13 +89,18 @@ void  EpollServer::handleClient(int fd) {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
 		if (len <= 0) {
-			LOG_INFO("client fd=%d closed", fd);
+			LOG_INFO ( "client disconnected, fd: %d" ,fd );
 			epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
+			{
+				lock_guard<mutex> mtx(client_mutex);
+				clients_.erase(fd);
+			}
 			close(fd);
 		}
 		else {
-			send(fd, buf, len, 0);//è¿™åœ°æ–¹ä»¥åæ›¿æ¢æˆä¸šåŠ¡å‡½æ•°
-			//éœ€è¦é‡æ–°ç™»è®°
+			recv_box_.push(fd, std::string(buf, len));
+			processBufferedData(fd);
+
 			epoll_event nev;
 			nev.data.fd = fd;
 			nev.events = EPOLLIN | EPOLLONESHOT;
@@ -69,23 +110,43 @@ void  EpollServer::handleClient(int fd) {
 }
 
 void EpollServer::acceptNewClient() {
-	int client_fd = accept(listen_fd_, nullptr, nullptr);
+	int client_fd = accept(listen_fd_, nullptr, nullptr); 
+	
 	if (client_fd < 0) {
 		LOG_ERROR("accept failed: %s", strerror(errno));
 		return;
+	}
+	{
+		//Î¬»¤¿Í»§Ãûµ¥
+		lock_guard<mutex> clmtx(client_mutex);
+		clients_.insert(client_fd);
 	}
 	LOG_DEBUG("new client fd=%d", client_fd);
 	epoll_event nev;
 	nev.data.fd = client_fd;
 	nev.events = EPOLLIN | EPOLLONESHOT;
-	epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);//ç¬¬ä¸‰ä¸ªå‚æ•°å¯¹è°æ“ä½œ
+	epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);
 
 	epoll_event nev1;
 	nev1.data.fd = listen_fd_;
 	nev1.events = EPOLLIN | EPOLLONESHOT;
 	epoll_ctl(epfd_, EPOLL_CTL_MOD,listen_fd_ , &nev1);
 }
+void EpollServer::processBufferedData(int fd) {
+	while (true) {
+		auto this_box = recv_box_.get(fd);
+		uint32_t len;
+		memcpy(&len, this_box.data(), 4);
+		len = ntohl(len);
+		if (this_box.length() < 4 || this_box.length() < 4 + len)	break;
 
+		string msg = this_box.substr(4, len);
+		uint32_t resp_len = htonl(msg.size());
+		send(fd, &resp_len, 4, 0);
+		send(fd, msg.data(), msg.size(), 0);
+		recv_box_.erase(fd, 4 + len);
+	}
+}
 EpollServer::~EpollServer(){
 	close(epfd_);
 	close(listen_fd_);
