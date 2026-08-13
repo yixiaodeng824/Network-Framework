@@ -3,6 +3,8 @@
 #include <map>
 #include <string>
 #include <mutex>
+#include <atomic>
+#include <set>
 class RecvBox
 {	
 private:
@@ -50,6 +52,11 @@ public:
 		return false;
 	}
 
+	void clearAll() {
+		std::lock_guard<std::mutex> lock(mtx);
+		boxes.clear();
+	}
+
 	~RecvBox() {
 		std::lock_guard<std::mutex> lock(mtx);
 		boxes.clear();
@@ -60,16 +67,21 @@ class EpollServer {
 public:
 	EpollServer(int port, ThreadPool& pool);
 	void start();
+	static void handle_signal(int);
+	void epollserver_exit();
 	~EpollServer();
 private:
 	void run();
 	void acceptNewClient();
 	void handleClient(int fd);
-	int port_;
+	int port_;//端口号
 	void processBufferedData(int fd);
 	int listen_fd_;
 	int epfd_;
+	static std::atomic<bool> stop_;
 	ThreadPool& pool_;
 	epoll_event events_[64];
 	RecvBox recv_box_;
+	std::set<int> clients_;//在服务器fd名单,目的是在服务器关闭的时候让剩下的fd完成剩余工作，而不是暴力退出
+	std::mutex client_mutex;
 };

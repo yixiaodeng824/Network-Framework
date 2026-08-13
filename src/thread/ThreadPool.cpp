@@ -12,10 +12,14 @@ ThreadPool::ThreadPool(size_t thread_count) {
 	}
 }
 
-ThreadPool::~ThreadPool() {
+void ThreadPool::close() {
+	if (exit_.exchange(true))	return;
 	msg_que_.close();
 	for (auto& w : workers_) {
 		w->join();
 	}
+}
+ThreadPool::~ThreadPool() {
+	close();
 }
 

@@ -4,8 +4,8 @@
 #include <vector>
 #include <memory>
 #include <future>
+#include <atomic>
 class ThreadPool
-
 {
 public:
 	explicit ThreadPool(size_t threadCount = 0);
@@ -32,8 +32,10 @@ public:
         return fut;
     }
 
+    void close();
 private:
 	MessageQueue msg_que_;
 	std::vector<std::unique_ptr<WorkThread>> workers_;
+    std::atomic<bool> exit_{false};
 };
 
