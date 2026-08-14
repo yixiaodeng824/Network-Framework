@@ -4,15 +4,15 @@ import struct
 import time
 import threading
 
-HOST = '192.168.159.128'   # ĞéÄâ»úµÄ IP
+HOST = '192.168.159.128'   # ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ IP
 PORT = 8888
 
 def build_msg(payload):
-    """´ò°üÒ»ÌõÏûÏ¢: [4×Ö½Ú³¤¶È][ÄÚÈİ]"""
+    """ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ï¢: [4ï¿½Ö½Ú³ï¿½ï¿½ï¿½][ï¿½ï¿½ï¿½ï¿½]"""
     return struct.pack('>I', len(payload)) + payload
 
 def recv_one(sock):
-    """°´³¤¶ÈÍ·Ğ­Òé,ÊÕÒ»ÌõÍêÕûÏûÏ¢"""
+    """ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·Ğ­ï¿½ï¿½,ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢"""
     header = b''
     while len(header) < 4:
         chunk = sock.recv(4 - len(header))
@@ -28,35 +28,35 @@ def recv_one(sock):
         body += chunk
     return body
 
-# ==== ÓÃÀı1:Õı³£ ====
+# ==== ï¿½ï¿½ï¿½ï¿½1:ï¿½ï¿½ï¿½ï¿½ ====
 s = socket.create_connection((HOST, PORT))
-print("== ÓÃÀı1:Õı³£ ==")
+print("== ï¿½ï¿½ï¿½ï¿½1:ï¿½ï¿½ï¿½ï¿½ ==")
 s.sendall(build_msg(b"hello"))
-print("  »ØÏÔ:", recv_one(s))
+print("  ï¿½ï¿½ï¿½ï¿½:", recv_one(s))
 s.close()
 
-# ==== ÓÃÀı2:Õ³°ü(Ò»´Î·¢Á½Ìõ) ====
+# ==== ï¿½ï¿½ï¿½ï¿½2:Õ³ï¿½ï¿½(Ò»ï¿½Î·ï¿½ï¿½ï¿½ï¿½ï¿½) ====
 s = socket.create_connection((HOST, PORT))
-print("== ÓÃÀı2:Õ³°ü ==")
+print("== ï¿½ï¿½ï¿½ï¿½2:Õ³ï¿½ï¿½ ==")
 s.sendall(build_msg(b"hello") + build_msg(b"world"))
-print("  µÚ1Ìõ:", recv_one(s))
-print("  µÚ2Ìõ:", recv_one(s))
+print("  ï¿½ï¿½1ï¿½ï¿½:", recv_one(s))
+print("  ï¿½ï¿½2ï¿½ï¿½:", recv_one(s))
 s.close()
 
-# ==== ÓÃÀı3:°ë°ü/´óÏûÏ¢(3000×Ö½Ú,·ÖÁ½´Î·¢) ====
+# ==== ï¿½ï¿½ï¿½ï¿½3:ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½Ï¢(3000ï¿½Ö½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½Î·ï¿½) ====
 s = socket.create_connection((HOST, PORT))
-print("== ÓÃÀı3:´óÏûÏ¢°ë°ü ==")
+print("== ï¿½ï¿½ï¿½ï¿½3:ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ ==")
 big = b"A" * 3000
-s.sendall(build_msg(big)[:1024])   # ÏÈ·¢Ç° 1024 ×Ö½Ú
-time.sleep(0.3)                    # Í£ 0.3 Ãë:ÈÃ·şÎñÆ÷ÏÈÊÕµ½Ò»°ë(°ë°ü)
-s.sendall(build_msg(big)[1024:])   # ÔÙ·¢Ê£ÏÂµÄ
+s.sendall(build_msg(big)[:1024])   # ï¿½È·ï¿½Ç° 1024 ï¿½Ö½ï¿½
+time.sleep(0.3)                    # Í£ 0.3 ï¿½ï¿½:ï¿½Ã·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õµï¿½Ò»ï¿½ï¿½(ï¿½ï¿½ï¿½)
+s.sendall(build_msg(big)[1024:])   # ï¿½Ù·ï¿½Ê£ï¿½Âµï¿½
 got = recv_one(s)
-print("  »ØÏÔ³¤¶È:", len(got), "| ÄÚÈİ¶Ô²»¶Ô:", got == big)
+print("  ï¿½ï¿½ï¿½Ô³ï¿½ï¿½ï¿½:", len(got), "| ï¿½ï¿½ï¿½İ¶Ô²ï¿½ï¿½ï¿½:", got == big)
 s.close()
 
-# ==== ÓÃÀı4:3¸öÓÃ»§Í¬Ê±·¢ÏûÏ¢ ====
-print("== ÓÃÀı4:3¸öÓÃ»§Í¬Ê±·¢ ==")
-names = [b"A" * 100, b"B" * 200, b"C" * 50]   # 3¸öÓÃ»§,¸÷·¢²»Í¬µÄÄÚÈİ
+# ==== ï¿½ï¿½ï¿½ï¿½4:3ï¿½ï¿½ï¿½Ã»ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½Ï¢ ====
+print("== ï¿½ï¿½ï¿½ï¿½4:3ï¿½ï¿½ï¿½Ã»ï¿½Í¬Ê±ï¿½ï¿½ ==")
+names = [b"A" * 100, b"B" * 200, b"C" * 50]   # 3ï¿½ï¿½ï¿½Ã»ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 socks = []
 for i in range(3):
     sk = socket.create_connection((HOST, PORT))
@@ -65,14 +65,14 @@ for i in range(3):
 def send_one(i):
     socks[i].sendall(build_msg(names[i]))
 
-# 3 ¸öÏß³ÌÍ¬Ê±·¢ËÍ(Ä£Äâ 3 ¸öÓÃ»§Í¬Ê±·¢ÏûÏ¢)
+# 3 ï¿½ï¿½ï¿½ß³ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½(Ä£ï¿½ï¿½ 3 ï¿½ï¿½ï¿½Ã»ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½Ï¢)
 threads = [threading.Thread(target=send_one, args=(i,)) for i in range(3)]
 for t in threads:
     t.start()
 for t in threads:
     t.join()
 
-# ¸÷×ÔÊÕ¸÷×ÔµÄ»ØÏÔ,ÑéÖ¤²»´®Ïß
+# ï¿½ï¿½ï¿½ï¿½ï¿½Õ¸ï¿½ï¿½ÔµÄ»ï¿½ï¿½ï¿½,ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 ok = True
 for i in range(3):
     got = recv_one(socks[i])
@@ -80,8 +80,8 @@ for i in range(3):
     if not correct:
         ok = False
     got_len = len(got) if got else 0
-    print("  ÓÃ»§%d: ·¢%d×Ö½Ú ÊÕµ½%d×Ö½Ú | ÄÚÈİ¶Ô²»¶Ô: %s" % (i+1, len(names[i]), got_len, correct))
+    print("  ï¿½Ã»ï¿½%d: ï¿½ï¿½%dï¿½Ö½ï¿½ ï¿½Õµï¿½%dï¿½Ö½ï¿½ | ï¿½ï¿½ï¿½İ¶Ô²ï¿½ï¿½ï¿½: %s" % (i+1, len(names[i]), got_len, correct))
 for sk in socks:
     sk.close()
 
-print("  ²¢·¢½á¹û:", "È«²¿Õı³£,²»´®Ïß!" if ok else "ÓĞ´®Ïß,³öÎÊÌâÁË!")
+print("  ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:", "È«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½!" if ok else "ï¿½Ğ´ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½!")
