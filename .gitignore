@@ -18,3 +18,7 @@ Release/
 *.pdb
 *.ilk
 *.log
+
+# Python 缓存
+__pycache__/
+*.pyc

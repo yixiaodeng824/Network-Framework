@@ -8,58 +8,65 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <csignal>
+#include <fcntl.h>
 using namespace std;
 atomic<bool> EpollServer::stop_{ false };
 
 EpollServer::EpollServer(int port, ThreadPool& pool):port_(port), pool_(pool) {
-	//创建套接字
+	//创建监听套接字
 	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
 	if (listen_fd_ < 0) { LOG_ERROR("socket failed: %s", strerror(errno)); exit(1); }
-	//确定要监听的端口
+	//确定要绑定的端口
 	sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_port = htons(port);
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = INADDR_ANY;
 	int opt = 1;
-	//设置套接字选项，允许地址重用
+	//设置套接字选项,允许地址复用
 	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 	//绑定端口
 	if (bind(listen_fd_, (sockaddr*) &addr, sizeof(addr)) < 0) {
 		LOG_ERROR("bind failed: %s", strerror(errno));
 		exit(1);
 	}
-	//创建轮询器
+	//创建 epoll 句柄
 	epfd_ = epoll_create(1);
 }
 
 void EpollServer::epollserver_exit() {
 	LOG_INFO("server stopping, closing connections...");
-	//先关线程池
+	//先关闭线程池
 	pool_.close();
-	//clients并非线程安全，对他操作要加锁
+	//clients 需要线程安全,所以加锁
 	{
 		lock_guard<mutex>	cltmtx(client_mutex);
-		for (auto& fd : clients_) {
-			close(fd);
+		for (auto& fd : fd_list) {
+			close(fd.first);
 		}
-		clients_.clear();
+		fd_list.clear();
 	}
-	recv_box_.clearAll();
+	//清理connection
+
 	LOG_INFO("server stopped.");
 
 }
 
 void EpollServer::run() {
 	while (!stop_) {
-		int n = epoll_wait(epfd_, events_, 64, 100);//阻塞等待事件发生
+		int n = epoll_wait(epfd_, events_, 64, 100);//等待事件发生
 		for (int i = 0;i < n;i++) {
 			int fd = events_[i].data.fd;
 			if (fd == listen_fd_) {
 				acceptNewClient();
 			}
 			else {
-				handleClient(fd);
+				if (events_[i].events & EPOLLOUT) {
+					handleWrite(fd);
+				}
+				else {
+					handleClient(fd);
+				}
 			}
 		}
 	}
@@ -67,10 +74,10 @@ void EpollServer::run() {
 }
 
 void EpollServer::start() {
-	//开始监听
+	//初始化
 	listen(listen_fd_, 5);
 	LOG_INFO("start listening on port %d", port_);
-	//先把监听套接字加入epoll事件列表
+	//先把监听套接字加进epoll事件列表
 	epoll_event ev;
 	ev.events = EPOLLIN | EPOLLONESHOT;
 	ev.data.fd = listen_fd_;
@@ -79,7 +86,7 @@ void EpollServer::start() {
 	signal(SIGTERM, handle_signal);
 	run();
 }
-//设置退出标识
+//优雅退出标志
 void EpollServer::handle_signal(int) {
 	stop_ = true;
 }
@@ -88,38 +95,98 @@ void  EpollServer::handleClient(int fd) {
 	pool_.submit([this, fd] {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
-		if (len <= 0) {
+		if (len == 0) {
 			LOG_INFO ( "client disconnected, fd: %d" ,fd );
-			epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
-			{
-				lock_guard<mutex> mtx(client_mutex);
-				clients_.erase(fd);
-			}
-			close(fd);
+			closeConnection(fd);
 		}
-		else {
-			recv_box_.push(fd, std::string(buf, len));
-			processBufferedData(fd);
+		else if(len > 0){
+			SendResult result{ SendResult::Pending };//消息一次是不是全发完了，全发完就直接无视了，没全发完登记成epollout等handlewrite继续发
+			{
+				lock_guard<mutex> lck(client_mutex);
+				auto it = fd_list.find(fd);
+				if (it == fd_list.end())	return;
+				it->second.appendRecv(buf, len);
+				it->second.processBufferedData();
+				result = it->second.sendReadyMessage();
+			}
 
 			epoll_event nev;
 			nev.data.fd = fd;
-			nev.events = EPOLLIN | EPOLLONESHOT;
+			if (result == SendResult::SentAll) {
+				nev.events = EPOLLIN | EPOLLONESHOT;
+			}
+			else if (result == SendResult::Pending) {
+				nev.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT;
+			}
+			else {
+				closeConnection(fd);
+			}
 			epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
 		}
+		else {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				// 没数据,忽略;但 EPOLLONESHOT 触发过一次,要重新 MOD 回 EPOLLIN
+				epoll_event nev;
+				nev.data.fd = fd;
+				nev.events = EPOLLIN | EPOLLONESHOT;
+				epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+			}
+			else {//连接真出错了
+				closeConnection(fd);
+			}
+		}
+
 	});
 }
 
+void EpollServer::handleWrite(int fd) {
+	pool_.submit([this, fd] {
+		SendResult result;
+		{
+			lock_guard<mutex> lck(client_mutex);
+			auto it = fd_list.find(fd);
+			if (it == fd_list.end()) return;
+			result = it->second.sendReadyMessage();
+		}
+		epoll_event nev;
+		nev.data.fd = fd;
+		if (result == SendResult::SentAll) {
+			nev.events = EPOLLIN | EPOLLONESHOT;
+		}
+		else if (result == SendResult::Pending) {//可能还会有新数据同时进来，要加epollin
+			nev.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT;
+		}//对方程序可能会阻塞不读,这个时候send就会卡住,我们需要解决这个问题
+		else {
+			closeConnection(fd);
+			return;
+		}
+		epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+		});
+}
+
+void EpollServer::closeConnection(int fd) {
+	LOG_INFO("close connection, fd: %d", fd);
+	epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
+	{
+		lock_guard<mutex> mtx(client_mutex);
+		fd_list.erase(fd);
+	}
+	close(fd);
+}
+
 void EpollServer::acceptNewClient() {
-	int client_fd = accept(listen_fd_, nullptr, nullptr); 
-	
+	int client_fd = accept(listen_fd_, nullptr, nullptr);
+
 	if (client_fd < 0) {
 		LOG_ERROR("accept failed: %s", strerror(errno));
 		return;
 	}
 	{
-		//维护客户名单
+		//维护客户连接
 		lock_guard<mutex> clmtx(client_mutex);
-		clients_.insert(client_fd);
+		int flag = fcntl(client_fd, F_GETFL, 0);
+		fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//设置客户非阻塞，为了处理在send时候的阻塞问题
+		fd_list.insert({ client_fd,Connection(client_fd) });
 	}
 	LOG_DEBUG("new client fd=%d", client_fd);
 	epoll_event nev;
@@ -132,21 +199,7 @@ void EpollServer::acceptNewClient() {
 	nev1.events = EPOLLIN | EPOLLONESHOT;
 	epoll_ctl(epfd_, EPOLL_CTL_MOD,listen_fd_ , &nev1);
 }
-void EpollServer::processBufferedData(int fd) {
-	while (true) {
-		auto this_box = recv_box_.get(fd);
-		uint32_t len;
-		memcpy(&len, this_box.data(), 4);
-		len = ntohl(len);
-		if (this_box.length() < 4 || this_box.length() < 4 + len)	break;
 
-		string msg = this_box.substr(4, len);
-		uint32_t resp_len = htonl(msg.size());
-		send(fd, &resp_len, 4, 0);
-		send(fd, msg.data(), msg.size(), 0);
-		recv_box_.erase(fd, 4 + len);
-	}
-}
 EpollServer::~EpollServer(){
 	close(epfd_);
 	close(listen_fd_);

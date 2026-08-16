@@ -18,31 +18,31 @@ namespace logger {
 
 namespace {
 
-// æœ€ä½æ˜¾ç¤ºçº§åˆ«(åŸå­å˜é‡:setLogLevel / isEnabled æ— éœ€åŠ é”)
+// ×îµÍÏÔÊ¾¼¶±ğ(Ô­×Ó±äÁ¿:setLogLevel / isEnabled ÎŞĞè¼ÓËø)
 std::atomic<int> g_minLevel{LOG_LEVEL_DEBUG};
 
 const char* kLevelNames[] = {"DEBUG", "INFO", "WARN", "ERROR"};
 constexpr int kLevelCount = 4;
 
-// é»˜è®¤æ—¥å¿—æ–‡ä»¶ä¸é˜Ÿåˆ—å®¹é‡(æœªè°ƒç”¨ init æ—¶ä½¿ç”¨)
+// Ä¬ÈÏÈÕÖ¾ÎÄ¼şÓë¶ÓÁĞÈİÁ¿(Î´µ÷ÓÃ init Ê±Ê¹ÓÃ)
 constexpr char kDefaultFilePath[] = "server.log";
 constexpr size_t kDefaultQueueCapacity = 65536;
 
-// å•æ¡æ—¥å¿—æ¶ˆæ¯æœ€å¤§é•¿åº¦(è¶…å‡ºéƒ¨åˆ†æˆªæ–­,ä¸æ—§ç‰ˆä¸€è‡´)
+// µ¥ÌõÈÕÖ¾ÏûÏ¢×î´ó³¤¶È(³¬³ö²¿·Ö½Ø¶Ï,Óë¾É°æÒ»ÖÂ)
 constexpr size_t kMaxMessageLen = 1024;
-// åå°çº¿ç¨‹å•æ¬¡æœ€å¤šè¿ç»­å¤„ç†çš„ä»»åŠ¡æ•°(æ”’æ‰¹å†™ç›˜)
+// ºóÌ¨Ïß³Ìµ¥´Î×î¶àÁ¬Ğø´¦ÀíµÄÈÎÎñÊı(ÔÜÅúĞ´ÅÌ)
 constexpr size_t kMaxBatch = 64;
-// stdio ç¼“å†²åŒºå¤§å°:æ”’æ»¡æ‰çœŸæ­£å‘èµ·å†™ç›˜,å‡å°‘ I/O æ¬¡æ•°
+// stdio »º³åÇø´óĞ¡:ÔÜÂú²ÅÕæÕı·¢ÆğĞ´ÅÌ,¼õÉÙ I/O ´ÎÊı
 constexpr size_t kWriteBufferSize = 64 * 1024;
 
-// ---- å¯åŠ¨å‰é…ç½®(init ä½¿ç”¨;åå°çº¿ç¨‹å¯åŠ¨åä¸å†ç”Ÿæ•ˆ) ----
+// ---- Æô¶¯Ç°ÅäÖÃ(init Ê¹ÓÃ;ºóÌ¨Ïß³ÌÆô¶¯ºó²»ÔÙÉúĞ§) ----
 std::mutex g_configMutex;
 std::string g_filePath = kDefaultFilePath;
 size_t g_queueCapacity = kDefaultQueueCapacity;
 bool g_started = false;
 
-// çº¿ç¨‹ id å­—ç¬¦ä¸²åŒ–ç¼“å­˜:ç”¨ POD å­—ç¬¦æ•°ç»„(æ— åŠ¨æ€åˆå§‹åŒ–ã€æ— ææ„å‡½æ•°),
-// é¿å… MinGW ä¸‹ thread_local std::string åœ¨é«˜å¹¶å‘å †åˆ†é…æ—¶å‡ºç°å †æŸå
+// Ïß³Ì id ×Ö·û´®»¯»º´æ:ÓÃ POD ×Ö·ûÊı×é(ÎŞ¶¯Ì¬³õÊ¼»¯¡¢ÎŞÎö¹¹º¯Êı),
+// ±ÜÃâ MinGW ÏÂ thread_local std::string ÔÚ¸ß²¢·¢¶Ñ·ÖÅäÊ±³öÏÖ¶ÑËğ»µ
 thread_local char g_tidBuf[48];
 thread_local bool g_tidReady = false;
 
@@ -56,7 +56,7 @@ int clampLevel(int level) {
     return level;
 }
 
-// çº¿ç¨‹å®‰å…¨çš„æ—¶é—´å­—ç¬¦ä¸²(localtime_s / localtime_r éƒ½è¾“å‡ºåˆ°è°ƒç”¨æ–¹æä¾›çš„ tm)
+// Ïß³Ì°²È«µÄÊ±¼ä×Ö·û´®(localtime_s / localtime_r ¶¼Êä³öµ½µ÷ÓÃ·½Ìá¹©µÄ tm)
 std::string nowTimeString() {
     std::time_t now = std::time(nullptr);
     std::tm timeInfo{};
@@ -70,9 +70,9 @@ std::string nowTimeString() {
     return std::string(timeBuf);
 }
 
-// å¼‚æ­¥æ—¥å¿—å™¨:
-//   LOG_* åªè´Ÿè´£æ ¼å¼åŒ–å¹¶å…¥é˜Ÿ,ç«‹å³è¿”å›(ä¸ç¢°ç£ç›˜);
-//   çœŸæ­£çš„å†™ç›˜ç”±åå°çº¿ç¨‹ä» MessageQueue æ‰¹é‡å–å‡ºåå®Œæˆã€‚
+// Òì²½ÈÕÖ¾Æ÷:
+//   LOG_* Ö»¸ºÔğ¸ñÊ½»¯²¢Èë¶Ó,Á¢¼´·µ»Ø(²»Åö´ÅÅÌ);
+//   ÕæÕıµÄĞ´ÅÌÓÉºóÌ¨Ïß³Ì´Ó MessageQueue ÅúÁ¿È¡³öºóÍê³É¡£
 class AsyncLogger {
 public:
     AsyncLogger() {
@@ -93,22 +93,22 @@ public:
     AsyncLogger(const AsyncLogger&) = delete;
     AsyncLogger& operator=(const AsyncLogger&) = delete;
 
-    // ç”Ÿäº§ç«¯:æŠŠæ•´è¡Œæ—¥å¿—å¡è¿›é˜Ÿåˆ—,ç«‹å³è¿”å›ã€‚
-    // é˜Ÿåˆ—æ»¡æ—¶é‡‡ç”¨"ä¸¢æœ€æ—§ä¿æœ€æ–°"ç­–ç•¥(pushOverrunOldest),ç»ä¸é˜»å¡ç”Ÿäº§è€…ã€‚
+    // Éú²ú¶Ë:°ÑÕûĞĞÈÕÖ¾Èû½ø¶ÓÁĞ,Á¢¼´·µ»Ø¡£
+    // ¶ÓÁĞÂúÊ±²ÉÓÃ"¶ª×î¾É±£×îĞÂ"²ßÂÔ(pushOverrunOldest),¾ø²»×èÈûÉú²úÕß¡£
     void enqueue(std::string line) {
         if (closed_.load(std::memory_order_relaxed)) {
-            return; // å·²å…³é—­,åç»­æ—¥å¿—ç›´æ¥ä¸¢å¼ƒ
+            return; // ÒÑ¹Ø±Õ,ºóĞøÈÕÖ¾Ö±½Ó¶ªÆú
         }
         queue_->pushOverrunOldest([this, line = std::move(line)] {
             writeLine(line);
         });
     }
 
-    // å…³é—­:å…ˆç¦æ­¢æ–°æ¶ˆæ¯å…¥é˜Ÿ,å†æ’ç©ºé˜Ÿåˆ— + flush,æœ€å join åå°çº¿ç¨‹
+    // ¹Ø±Õ:ÏÈ½ûÖ¹ĞÂÏûÏ¢Èë¶Ó,ÔÙÅÅ¿Õ¶ÓÁĞ + flush,×îºó join ºóÌ¨Ïß³Ì
     void shutdown() {
         bool expected = false;
         if (!closed_.compare_exchange_strong(expected, true)) {
-            return; // å·²ç»å…³è¿‡
+            return; // ÒÑ¾­¹Ø¹ı
         }
         queue_->close();
         if (writer_.joinable()) {
@@ -116,10 +116,10 @@ public:
         }
     }
 
-    // å±éšœä»»åŠ¡:ç­‰åˆ°å®ƒè¢«åå°çº¿ç¨‹æ‰§è¡Œ,è¯´æ˜å®ƒä¹‹å‰å…¥é˜Ÿçš„æ—¥å¿—éƒ½å·²å†™ç›˜
+    // ÆÁÕÏÈÎÎñ:µÈµ½Ëü±»ºóÌ¨Ïß³ÌÖ´ĞĞ,ËµÃ÷ËüÖ®Ç°Èë¶ÓµÄÈÕÖ¾¶¼ÒÑĞ´ÅÌ
     void flush() {
         if (closed_.load(std::memory_order_relaxed)) {
-            return; // å·²å…³é—­,æ— å¯ç­‰å¾…
+            return; // ÒÑ¹Ø±Õ,ÎŞ¿ÉµÈ´ı
         }
         auto done = std::make_shared<std::promise<void>>();
         std::future<void> fut = done->get_future();
@@ -133,13 +133,13 @@ private:
     void run() {
         file_ = std::fopen(filePath_.c_str(), "a");
         if (file_ == nullptr) {
-            // æ‰“ä¸å¼€æ–‡ä»¶å°±é€€å› stdout,ä¿è¯æ—¥å¿—ä¸ä¸¢
+            // ´ò²»¿ªÎÄ¼ş¾ÍÍË»Ø stdout,±£Ö¤ÈÕÖ¾²»¶ª
             file_ = stdout;
             std::fprintf(stderr,
                          "[logger] cannot open log file '%s', fallback to stdout\n",
                          filePath_.c_str());
         } else {
-            // å¤§ç¼“å†²åŒº:æ”’æ»¡æ‰çœŸæ­£å†™ç›˜,é…åˆä¸‹é¢çš„æ‰¹é‡å–é˜Ÿåˆ—å‡å°‘ I/O
+            // ´ó»º³åÇø:ÔÜÂú²ÅÕæÕıĞ´ÅÌ,ÅäºÏÏÂÃæµÄÅúÁ¿È¡¶ÓÁĞ¼õÉÙ I/O
             std::setvbuf(file_, writeBuf_, _IOFBF, kWriteBufferSize);
         }
 
@@ -147,19 +147,19 @@ private:
         while (true) {
             MessageQueue::Task task;
             if (!queue_->pop(task)) {
-                break; // é˜Ÿåˆ—å·²å…³é—­ä¸”å·²æ’ç©º
+                break; // ¶ÓÁĞÒÑ¹Ø±ÕÇÒÒÑÅÅ¿Õ
             }
             task();
 
-            // æ‰¹é‡:æŠŠå·²ç»å †ç§¯çš„æ¶ˆæ¯å°½é‡ä¸€æ¬¡å–å®Œ,å‡å°‘å†™ç›˜æ¬¡æ•°
+            // ÅúÁ¿:°ÑÒÑ¾­¶Ñ»ıµÄÏûÏ¢¾¡Á¿Ò»´ÎÈ¡Íê,¼õÉÙĞ´ÅÌ´ÎÊı
             size_t batch = 1;
             while (batch < kMaxBatch && queue_->tryPop(task)) {
                 task();
                 ++batch;
             }
 
-            // é˜Ÿåˆ—å·²ç©º â†’ ç«‹å³ flush,ä¿è¯æ—¥å¿—åŠæ—¶å¯è§;
-            // é˜Ÿåˆ—ä»æœ‰ç§¯å‹ â†’ ç»§ç»­æ”’ç€,ä¸‹æ¬¡æ‰¹é‡å†å†™
+            // ¶ÓÁĞÒÑ¿Õ ¡ú Á¢¼´ flush,±£Ö¤ÈÕÖ¾¼°Ê±¿É¼û;
+            // ¶ÓÁĞÈÔÓĞ»ıÑ¹ ¡ú ¼ÌĞøÔÜ×Å,ÏÂ´ÎÅúÁ¿ÔÙĞ´
             if (queue_->size() == 0) {
                 std::fflush(file_);
                 reportDropsIfChanged(lastReportedDrops);
@@ -180,7 +180,7 @@ private:
         }
     }
 
-    // é˜Ÿåˆ—å‘ç”Ÿè¿‡"ä¸¢æœ€æ—§"æ—¶,æŠŠç´¯è®¡ä¸¢å¼ƒæ•°å†™è¿›æ—¥å¿—,è®©ä¸¢å¼ƒå¯è§å¯å®¡è®¡
+    // ¶ÓÁĞ·¢Éú¹ı"¶ª×î¾É"Ê±,°ÑÀÛ¼Æ¶ªÆúÊıĞ´½øÈÕÖ¾,ÈÃ¶ªÆú¿É¼û¿ÉÉó¼Æ
     void reportDropsIfChanged(size_t& lastReported) {
         const size_t dropped = queue_->droppedCount();
         if (dropped == lastReported) {
@@ -203,7 +203,7 @@ private:
     char writeBuf_[kWriteBufferSize];
 };
 
-// é¦–æ¬¡ä½¿ç”¨(æ‰“ç¬¬ä¸€æ¡æ—¥å¿— / shutdown)æ—¶æ‰æ„é€ å¹¶å¯åŠ¨åå°çº¿ç¨‹
+// Ê×´ÎÊ¹ÓÃ(´òµÚÒ»ÌõÈÕÖ¾ / shutdown)Ê±²Å¹¹Ôì²¢Æô¶¯ºóÌ¨Ïß³Ì
 AsyncLogger& instance() {
     static AsyncLogger logger;
     return logger;
@@ -226,7 +226,7 @@ bool isEnabled(int level) {
 void init(const char* filePath, size_t queueCapacity) {
     std::lock_guard<std::mutex> lock(g_configMutex);
     if (g_started) {
-        return; // åå°çº¿ç¨‹å·²å¯åŠ¨,é…ç½®ä¸å†ç”Ÿæ•ˆ
+        return; // ºóÌ¨Ïß³ÌÒÑÆô¶¯,ÅäÖÃ²»ÔÙÉúĞ§
     }
     if (filePath != nullptr && filePath[0] != '\0') {
         g_filePath = filePath;
@@ -247,15 +247,15 @@ void logMessage(int level, const char* fmt, ...) {
         return;
     }
 
-    // 1. æ ¼å¼åŒ–æ¶ˆæ¯æœ¬ä½“(è¶…è¿‡ 1024 å­—èŠ‚ä¼šè¢«æˆªæ–­,ä¸æ—§ç‰ˆä¸€è‡´)
+    // 1. ¸ñÊ½»¯ÏûÏ¢±¾Ìå(³¬¹ı 1024 ×Ö½Ú»á±»½Ø¶Ï,Óë¾É°æÒ»ÖÂ)
     char msg[kMaxMessageLen];
     va_list args;
     va_start(args, fmt);
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
 
-    // 2. ç»„è£…å®Œæ•´è¡Œ:æ—¶é—´åœ¨å…¥é˜Ÿå‰æ‰“å¥½,åå°æŒ‰å…¥é˜Ÿé¡ºåºè½ç›˜,
-    //    åŒä¸€ç”Ÿäº§è€…çº¿ç¨‹çš„æ—¥å¿—ä¸¥æ ¼ä¿æŒäº§ç”Ÿé¡ºåº
+    // 2. ×é×°ÍêÕûĞĞ:Ê±¼äÔÚÈë¶ÓÇ°´òºÃ,ºóÌ¨°´Èë¶ÓË³ĞòÂäÅÌ,
+    //    Í¬Ò»Éú²úÕßÏß³ÌµÄÈÕÖ¾ÑÏ¸ñ±£³Ö²úÉúË³Ğò
     const std::string timeStr = nowTimeString();
     const int idx = clampLevel(level);
 
@@ -278,7 +278,7 @@ void logMessage(int level, const char* fmt, ...) {
                            ? static_cast<size_t>(written)
                            : sizeof(line) - 1;
 
-    // 3. åªå…¥é˜Ÿ,ç«‹å³è¿”å›:ç£ç›˜ I/O å…¨éƒ¨äº¤ç»™åå°çº¿ç¨‹
+    // 3. Ö»Èë¶Ó,Á¢¼´·µ»Ø:´ÅÅÌ I/O È«²¿½»¸øºóÌ¨Ïß³Ì
     instance().enqueue(std::string(line, len));
 }
 

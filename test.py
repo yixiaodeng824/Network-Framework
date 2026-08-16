@@ -4,84 +4,168 @@ import struct
 import time
 import threading
 
-HOST = '192.168.159.128'   # ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ IP
+HOST = '192.168.159.128'   # ·şÎñÆ÷ IP(±¾»ú²â¾Í¸Ä³É 127.0.0.1)
 PORT = 8888
+TIMEOUT = 3                # Ã¿²½×î¶àµÈ 3 Ãë,³¬Ê±´òÕï¶Ï¶ø²»ÊÇËÀµÈ
 
 def build_msg(payload):
-    """ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ï¢: [4ï¿½Ö½Ú³ï¿½ï¿½ï¿½][ï¿½ï¿½ï¿½ï¿½]"""
+    """´ò°üÒ»ÌõÏûÏ¢: [4×Ö½Ú³¤¶È][ÄÚÈİ]"""
     return struct.pack('>I', len(payload)) + payload
 
 def recv_one(sock):
-    """ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·Ğ­ï¿½ï¿½,ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢"""
-    header = b''
-    while len(header) < 4:
-        chunk = sock.recv(4 - len(header))
-        if not chunk:
-            return None
-        header += chunk
-    length = struct.unpack('>I', header)[0]
-    body = b''
-    while len(body) < length:
-        chunk = sock.recv(length - len(body))
-        if not chunk:
-            return None
-        body += chunk
-    return body
+    """°´4×Ö½ÚÍ·Ğ­Òé,¶ÁÒ»ÌõÍêÕûÏûÏ¢;³¬Ê±/¶Ï¿ª·µ»Ø None"""
+    try:
+        header = b''
+        while len(header) < 4:
+            chunk = sock.recv(4 - len(header))
+            if not chunk:
+                return None
+            header += chunk
+        length = struct.unpack('>I', header)[0]
+        body = b''
+        while len(body) < length:
+            chunk = sock.recv(length - len(body))
+            if not chunk:
+                return None
+            body += chunk
+        return body
+    except socket.timeout:
+        return None   # ³¬Ê±Ã»µÈµ½ÍêÕû»ØÏÔ
 
-# ==== ï¿½ï¿½ï¿½ï¿½1:ï¿½ï¿½ï¿½ï¿½ ====
-s = socket.create_connection((HOST, PORT))
-print("== ï¿½ï¿½ï¿½ï¿½1:ï¿½ï¿½ï¿½ï¿½ ==")
-s.sendall(build_msg(b"hello"))
-print("  ï¿½ï¿½ï¿½ï¿½:", recv_one(s))
-s.close()
+def make_conn():
+    """½¨Á¬½Ó,³¬Ê±·µ»Ø None"""
+    try:
+        return socket.create_connection((HOST, PORT), timeout=TIMEOUT)
+    except Exception as e:
+        print("  !! Á¬²»ÉÏ·şÎñÆ÷:", e)
+        return None
 
-# ==== ï¿½ï¿½ï¿½ï¿½2:Õ³ï¿½ï¿½(Ò»ï¿½Î·ï¿½ï¿½ï¿½ï¿½ï¿½) ====
-s = socket.create_connection((HOST, PORT))
-print("== ï¿½ï¿½ï¿½ï¿½2:Õ³ï¿½ï¿½ ==")
-s.sendall(build_msg(b"hello") + build_msg(b"world"))
-print("  ï¿½ï¿½1ï¿½ï¿½:", recv_one(s))
-print("  ï¿½ï¿½2ï¿½ï¿½:", recv_one(s))
-s.close()
+def miss(got, what):
+    """»ØÏÔÃ»µÈµ½Ê±,´òÓ¡Í³Ò»Õï¶Ï"""
+    print("  !! ³¬Ê±Ã»µÈµ½»ØÏÔ(%s)" % what)
+    print("     -> ·şÎñÆ÷ÊÕµ½ÁËÂğ?¿´ĞéÄâ»ú server.log ÓĞÃ»ÓĞ 'new client fd='")
+    print("     -> ÊÕµ½ÁËÃ»»ØÏÔ?¶à°ëÊÇ±àÒëµÄ»¹ÊÇ¾É server.out(¾É´úÂë²»»á»ØÏÔ)")
 
-# ==== ï¿½ï¿½ï¿½ï¿½3:ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½Ï¢(3000ï¿½Ö½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½Î·ï¿½) ====
-s = socket.create_connection((HOST, PORT))
-print("== ï¿½ï¿½ï¿½ï¿½3:ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ ==")
-big = b"A" * 3000
-s.sendall(build_msg(big)[:1024])   # ï¿½È·ï¿½Ç° 1024 ï¿½Ö½ï¿½
-time.sleep(0.3)                    # Í£ 0.3 ï¿½ï¿½:ï¿½Ã·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õµï¿½Ò»ï¿½ï¿½(ï¿½ï¿½ï¿½)
-s.sendall(build_msg(big)[1024:])   # ï¿½Ù·ï¿½Ê£ï¿½Âµï¿½
-got = recv_one(s)
-print("  ï¿½ï¿½ï¿½Ô³ï¿½ï¿½ï¿½:", len(got), "| ï¿½ï¿½ï¿½İ¶Ô²ï¿½ï¿½ï¿½:", got == big)
-s.close()
+# ==== ²âÊÔ1: µ¥ÌõÏûÏ¢ ====
+print("== ²âÊÔ1: µ¥Ìõ ==")
+s = make_conn()
+if s:
+    s.sendall(build_msg(b"hello"))
+    got = recv_one(s)
+    if got is None:
+        miss(got, "²âÊÔ1 hello")
+    else:
+        print("  ÊÕµ½:", got)
+    s.close()
 
-# ==== ï¿½ï¿½ï¿½ï¿½4:3ï¿½ï¿½ï¿½Ã»ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½Ï¢ ====
-print("== ï¿½ï¿½ï¿½ï¿½4:3ï¿½ï¿½ï¿½Ã»ï¿½Í¬Ê±ï¿½ï¿½ ==")
-names = [b"A" * 100, b"B" * 200, b"C" * 50]   # 3ï¿½ï¿½ï¿½Ã»ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+# ==== ²âÊÔ2: Õ³°ü(Ò»´Î·¢Á½Ìõ) ====
+print("== ²âÊÔ2: Õ³°ü ==")
+s = make_conn()
+if s:
+    s.sendall(build_msg(b"hello") + build_msg(b"world"))
+    a, b = recv_one(s), recv_one(s)
+    if a is None or b is None:
+        miss(None, "²âÊÔ2 hello/world")
+    else:
+        print("  µÚ1Ìõ:", a)
+        print("  µÚ2Ìõ:", b)
+    s.close()
+
+# ==== ²âÊÔ3: °ë°ü/´óÏûÏ¢(3000×Ö½Ú,·ÖÁ½´Î·¢) ====
+print("== ²âÊÔ3: ´óÏûÏ¢°ë°ü ==")
+s = make_conn()
+if s:
+    big = b"A" * 3000
+    s.sendall(build_msg(big)[:1024])   # ÏÈ·¢Ç° 1024 ×Ö½Ú
+    time.sleep(0.3)                    # Í£Ò»ÏÂ,ÈÃ·şÎñÆ÷ÏÈÊÕµ½Ç°Ò»°ë
+    s.sendall(build_msg(big)[1024:])   # ÔÙ·¢Ê£ÏÂµÄ
+    got = recv_one(s)
+    if got is None:
+        miss(got, "²âÊÔ3 ´óÏûÏ¢")
+    else:
+        print("  ÊÕµ½³¤¶È:", len(got), "| ÄÚÈİ¶Ô²»¶Ô:", got == big)
+    s.close()
+
+# ==== ²âÊÔ4: 3¸öÓÃ»§Í¬Ê±·¢ÏûÏ¢ ====
+print("== ²âÊÔ4: 3¸öÓÃ»§Í¬Ê±·¢ ==")
+names = [b"A" * 100, b"B" * 200, b"C" * 50]
 socks = []
 for i in range(3):
-    sk = socket.create_connection((HOST, PORT))
-    socks.append(sk)
+    sk = make_conn()
+    if sk:
+        socks.append(sk)
 
-def send_one(i):
-    socks[i].sendall(build_msg(names[i]))
+if len(socks) == 3:
+    def send_one(i):
+        socks[i].sendall(build_msg(names[i]))
 
-# 3 ï¿½ï¿½ï¿½ß³ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½(Ä£ï¿½ï¿½ 3 ï¿½ï¿½ï¿½Ã»ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½Ï¢)
-threads = [threading.Thread(target=send_one, args=(i,)) for i in range(3)]
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
+    threads = [threading.Thread(target=send_one, args=(i,)) for i in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
-# ï¿½ï¿½ï¿½ï¿½ï¿½Õ¸ï¿½ï¿½ÔµÄ»ï¿½ï¿½ï¿½,ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ok = True
-for i in range(3):
-    got = recv_one(socks[i])
-    correct = (got == names[i])
-    if not correct:
-        ok = False
-    got_len = len(got) if got else 0
-    print("  ï¿½Ã»ï¿½%d: ï¿½ï¿½%dï¿½Ö½ï¿½ ï¿½Õµï¿½%dï¿½Ö½ï¿½ | ï¿½ï¿½ï¿½İ¶Ô²ï¿½ï¿½ï¿½: %s" % (i+1, len(names[i]), got_len, correct))
-for sk in socks:
-    sk.close()
+    ok = True
+    for i in range(3):
+        got = recv_one(socks[i])
+        correct = (got == names[i])
+        if got is None:
+            miss(got, "²âÊÔ4 ÓÃ»§%d" % (i+1))
+            correct = False
+        if not correct:
+            ok = False
+        got_len = len(got) if got else 0
+        print("  ÓÃ»§%d: ·¢%d×Ö½Ú ÊÕµ½%d×Ö½Ú | ÄÚÈİ¶Ô²»¶Ô: %s" % (i+1, len(names[i]), got_len, correct))
+    for sk in socks:
+        sk.close()
+    print("  ²âÊÔ4½á¹û:", "È«²¿ÕıÈ·!" if ok else "ÓĞ´íÎó!")
 
-print("  ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½:", "È«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½!" if ok else "ï¿½Ğ´ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½!")
+# ==== ²âÊÔ5: ·¢ËÍ»º³å¡ª¡ªÁ¬Ğø¶àÌõºÏ²¢»ØÏÔ ====
+# Ò»¿ÚÆø·¢ 10 Ìõ(Õ³°ü)¡£·şÎñÆ÷ processBufferedData »á°ÑËüÃÇÆ´½ø send_buffer_,
+# sendReadyMessage Ò»´Î·¢»Ø,ÑéÖ¤"¶àÌõÆ´»º³å¡¢ºÏ²¢·¢ËÍ"ÕıÈ·
+print("== ²âÊÔ5: 10ÌõºÏ²¢»ØÏÔ(·¢ËÍ»º³å) ==")
+s = make_conn()
+if s:
+    msgs = [("batch-%d" % i).encode() * 20 for i in range(10)]
+    for m in msgs:
+        s.sendall(build_msg(m))
+    ok = True
+    for i in range(10):
+        got = recv_one(s)
+        if got is None or got != msgs[i]:
+            ok = False
+    print("  10ÌõÄÚÈİÓëË³Ğò¶Ô²»¶Ô:", ok)
+    s.close()
+
+# ==== ²âÊÔ6: ´óÏûÏ¢»ØÏÔ(200KB,Ô¶³¬ recv µÄ 1024 »º³å) ====
+# ·şÎñÆ÷Òª¶à´Î recv Æ´½ø recv_buffer_,²ğ°üºóÆ´½ø send_buffer_ ÔÙ·¢»Ø
+print("== ²âÊÔ6: 200KB´óÏûÏ¢»ØÏÔ ==")
+s = make_conn()
+if s:
+    big = b"B" * 200000
+    s.sendall(build_msg(big))
+    got = recv_one(s)
+    if got is None:
+        miss(got, "²âÊÔ6 ´óÏûÏ¢")
+    else:
+        print("  ÊÕµ½³¤¶È:", len(got), "| ÄÚÈİ¶Ô²»¶Ô:", got == big)
+    s.close()
+
+# ==== ²âÊÔ7: 100ÌõĞ¡ÏûÏ¢Á¬·¢,ÑéÖ¤Ë³Ğò ====
+print("== ²âÊÔ7: 100ÌõĞ¡ÏûÏ¢Á¬·¢ ==")
+s = make_conn()
+if s:
+    for i in range(100):
+        s.sendall(build_msg(("ping-%d" % i).encode()))
+    ok = True
+    for i in range(100):
+        got = recv_one(s)
+        if got is None or got != ("ping-%d" % i).encode():
+            ok = False
+    print("  100ÌõË³Ğò¶Ô²»¶Ô:", ok)
+    s.close()
+
+print()
+print("== ËµÃ÷ ==")
+print("  ²âÊÔ5~7 ÑéÖ¤µÄÊÇ'·¢ËÍ»º³åÆ´×° + ·¢ËÍ'µÄÕıÈ·ĞÔ¡£")
+print("  ×èÈû socket ÏÂ EPOLLOUT Ğø·¢·ÖÖ§ºÜÄÑÕæÕı×ßµ½;ÒªµÈÒÔºó·Ç×èÈû¸ÄÔì²Å´¥·¢¡£")

@@ -7,6 +7,7 @@
     <ClCompile Include="src\thread\MessageQueue.cpp" />
     <ClCompile Include="src\thread\ThreadPool.cpp" />
     <ClCompile Include="src\thread\work_thread.cpp" />
+    <ClCompile Include="src\net\connection.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\log\Logger.h" />
@@ -14,5 +15,6 @@
     <ClInclude Include="src\thread\ThreadPool.h" />
     <ClInclude Include="src\thread\MessageQueue.h" />
     <ClInclude Include="src\thread\work_thread.h" />
+    <ClInclude Include="src\net\connection.h" />
   </ItemGroup>
 </Project>
