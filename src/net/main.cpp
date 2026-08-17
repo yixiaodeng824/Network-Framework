@@ -8,6 +8,7 @@ int main(int argc,char* argv[]) {
 	logger::setLogLevel(logger::LOG_LEVEL_DEBUG);
 	int port = 8888;
 	int threadnum = 0;
+	int heartbeats = 60;
 	for (int i = 1; i < argc; i++) {
 		if ((strcmp(argv[i], "-p") == 0 || (strcmp(argv[i], "--port") == 0) )){
 			if (i+1 >= argc) {
@@ -27,9 +28,18 @@ int main(int argc,char* argv[]) {
 				threadnum = atoi(argv[i + 1]);
 			}
 		}
+		if ((strcmp(argv[i], "-h") == 0 || (strcmp(argv[i], "--heartbeats") == 0))) {
+			if (i + 1 >= argc) {
+				LOG_DEBUG("no heartbeats");
+				break;
+			}
+			else {
+				heartbeats = atoi(argv[i + 1]);
+			}
+		}
 	}
 	ThreadPool tp(threadnum);
-	EpollServer es(port, tp);
+	EpollServer es(port, tp,heartbeats);
 	es.start();
 	return 0;
 }

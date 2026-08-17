@@ -9,10 +9,11 @@
 #include <cerrno>
 #include <csignal>
 #include <fcntl.h>
+#include <vector>
 using namespace std;
 atomic<bool> EpollServer::stop_{ false };
 
-EpollServer::EpollServer(int port, ThreadPool& pool):port_(port), pool_(pool) {
+EpollServer::EpollServer(int port, ThreadPool& pool,int heartbeat_timeout=60):port_(port), pool_(pool),heartbeat_timeout_(heartbeat_timeout) {
 	//创建监听套接字
 	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
 	if (listen_fd_ < 0) { LOG_ERROR("socket failed: %s", strerror(errno)); exit(1); }
@@ -52,7 +53,25 @@ void EpollServer::epollserver_exit() {
 
 }
 
+void EpollServer::heartBeatCheck() {
+	time_t now = time(nullptr);
+	vector<int> timeout_fds;
+	{
+		lock_guard<mutex> lck(client_mutex);
+		for (auto& [fd, conn] : fd_list) {
+			if (conn.isTimeout(now, heartbeat_timeout_)) {
+				timeout_fds.push_back(fd);
+			}
+		}
+	}
+	for (auto fd : timeout_fds) {
+		LOG_INFO("heartbeat timeout, close fd: %d", fd);
+		closeConnection(fd);
+	}
+}
+
 void EpollServer::run() {
+	int tick = 0;
 	while (!stop_) {
 		int n = epoll_wait(epfd_, events_, 64, 100);//等待事件发生
 		for (int i = 0;i < n;i++) {
@@ -69,6 +88,11 @@ void EpollServer::run() {
 				}
 			}
 		}
+		if (++tick >= 10) {
+			//1s扫描一次
+			heartBeatCheck();
+			tick = 0;
+		}
 	}
 	epollserver_exit();
 }
@@ -84,6 +108,7 @@ void EpollServer::start() {
 	epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd_, &ev);
 	signal(SIGINT, handle_signal);
 	signal(SIGTERM, handle_signal);
+	signal(SIGPIPE, SIG_IGN);
 	run();
 }
 //优雅退出标志
@@ -95,17 +120,38 @@ void  EpollServer::handleClient(int fd) {
 	pool_.submit([this, fd] {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
-		if (len == 0) {
-			LOG_INFO ( "client disconnected, fd: %d" ,fd );
-			closeConnection(fd);
+		if (len == 0) {//关闭fd，可能fd对应的缓冲区仍然有东西，需要全发完再关
+			SendResult result;
+			{
+				lock_guard<mutex> lck(client_mutex);
+				auto it = fd_list.find(fd);
+				if (it == fd_list.end())	return;
+				it->second.markClosing();
+				result = it->second.sendReadyMessage();
+			}
+			epoll_event nev;
+			nev.data.fd = fd;
+			//没东西了
+			if (result == SendResult::SentAll) {
+				closeConnection(fd);
+			}
+			else if (result == SendResult::Pending) {
+				nev.events = EPOLLOUT | EPOLLONESHOT;
+				epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+			}
+			else {//出错
+				closeConnection(fd);
+			}
 		}
 		else if(len > 0){
-			SendResult result{ SendResult::Pending };//消息一次是不是全发完了，全发完就直接无视了，没全发完登记成epollout等handlewrite继续发
+			SendResult result{ SendResult::Pending };//消息一次是不是全发完了，全发完就直接无视了，
+			//没全发完登记成epollout等handlewrite继续发
 			{
 				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
 				if (it == fd_list.end())	return;
 				it->second.appendRecv(buf, len);
+				it->second.touchActive();//刷新一下活跃时间
 				it->second.processBufferedData();
 				result = it->second.sendReadyMessage();
 			}
@@ -142,20 +188,32 @@ void  EpollServer::handleClient(int fd) {
 void EpollServer::handleWrite(int fd) {
 	pool_.submit([this, fd] {
 		SendResult result;
+		bool closing = false;
 		{
 			lock_guard<mutex> lck(client_mutex);
 			auto it = fd_list.find(fd);
 			if (it == fd_list.end()) return;
 			result = it->second.sendReadyMessage();
+			closing = it->second.isClosing();
 		}
 		epoll_event nev;
 		nev.data.fd = fd;
 		if (result == SendResult::SentAll) {
+			if (closing) {
+				shutdown(fd, SHUT_WR);
+				closeConnection(fd);
+				return;
+			}
 			nev.events = EPOLLIN | EPOLLONESHOT;
-		}
-		else if (result == SendResult::Pending) {//可能还会有新数据同时进来，要加epollin
-			nev.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT;
 		}//对方程序可能会阻塞不读,这个时候send就会卡住,我们需要解决这个问题
+		else if (result == SendResult::Pending) {//可能还会有新数据同时进来，要加epollin
+			if (closing) {
+				nev.events = EPOLLOUT | EPOLLONESHOT;//关闭中，不挂读
+			}
+			else {
+				nev.events = EPOLLIN | EPOLLOUT | EPOLLONESHOT;
+			}
+		}
 		else {
 			closeConnection(fd);
 			return;
