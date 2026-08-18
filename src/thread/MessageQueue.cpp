@@ -38,7 +38,7 @@ bool MessageQueue::pop(Task& task) {
 		if (m_closed.load(std::memory_order_relaxed)) {
 			return false;
 		}
-		m_cv.wait(lck);
+		m_cv.wait(lck);//必须用while，因为close的notifyall假设队列只有一个任务，所有线程同时被唤醒，队列为空之后仍然无脑pop
 	}
 	task = std::move(m_tasks.front());
 	m_tasks.pop_front();

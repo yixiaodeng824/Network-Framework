@@ -1,18 +1,18 @@
-// å¼‚æ­¥æ—¥å¿—æµ‹è¯•ç¨‹åº:éªŒè¯ LOG_* åªå…¥é˜Ÿã€åå°çº¿ç¨‹æ‰¹é‡è½ç›˜
+// Òì²½ÈÕÖ¾²âÊÔ³ÌĞò:ÑéÖ¤ LOG_* Ö»Èë¶Ó¡¢ºóÌ¨Ïß³ÌÅúÁ¿ÂäÅÌ
 //
-// ç¼–è¯‘(g++ / MinGW):
+// ±àÒë(g++ / MinGW):
 //   g++ -std=c++17 -Wall -Wextra -pedantic -I src/log -I src/thread
 //       src/log/Logger.cpp src/thread/MessageQueue.cpp src/log/test_logger.cpp
 //       -o test_logger
-// è¿è¡Œ:
+// ÔËĞĞ:
 //   ./test_logger
 //
-// éªŒè¯ç‚¹:
-//   1. å¼‚æ­¥:LOG_* åªæŠŠæ¶ˆæ¯æ¨å…¥é˜Ÿåˆ—,ç«‹å³è¿”å›(ä¸ç¢°ç£ç›˜)
-//   2. setLogLevel è®¾ä¸º INFO å,DEBUG ä¸è½ç›˜
-//   3. å¤šçº¿ç¨‹åŒæ—¶æ‰“æ—¥å¿—,æ¯è¡Œå®Œæ•´ã€ä¸äº¤é”™
-//   4. shutdown åå‰©ä½™æ—¥å¿—å…¨éƒ¨è½ç›˜
-//   5. æœ‰ç•Œé˜Ÿåˆ—æ»¡æ—¶"ä¸¢æœ€æ—§ä¿æœ€æ–°"ç­–ç•¥æ­£ç¡®ã€ä¸é˜»å¡ç”Ÿäº§è€…
+// ÑéÖ¤µã:
+//   1. Òì²½:LOG_* Ö»°ÑÏûÏ¢ÍÆÈë¶ÓÁĞ,Á¢¼´·µ»Ø(²»Åö´ÅÅÌ)
+//   2. setLogLevel ÉèÎª INFO ºó,DEBUG ²»ÂäÅÌ
+//   3. ¶àÏß³ÌÍ¬Ê±´òÈÕÖ¾,Ã¿ĞĞÍêÕû¡¢²»½»´í
+//   4. shutdown ºóÊ£ÓàÈÕÖ¾È«²¿ÂäÅÌ
+//   5. ÓĞ½ç¶ÓÁĞÂúÊ±"¶ª×î¾É±£×îĞÂ"²ßÂÔÕıÈ·¡¢²»×èÈûÉú²úÕß
 
 #include "Logger.h"
 #include "MessageQueue.h"
@@ -34,7 +34,7 @@ void expect(bool ok, const char* what) {
     }
 }
 
-// è§£ææ—¥å¿—è¡Œé‡Œ "key=æ•°å­—" åé¢çš„æ•°å­—;æ‰¾ä¸åˆ°è¿”å› -1
+// ½âÎöÈÕÖ¾ĞĞÀï "key=Êı×Ö" ºóÃæµÄÊı×Ö;ÕÒ²»µ½·µ»Ø -1
 int parseNumberAfter(const std::string& line, const std::string& key) {
     const size_t pos = line.find(key);
     if (pos == std::string::npos) {
@@ -54,13 +54,13 @@ int parseNumberAfter(const std::string& line, const std::string& key) {
 
 struct Stats {
     int total = 0;
-    int worker = 0;        // ç¡®å®šæ€§é˜¶æ®µ:4 çº¿ç¨‹ x 100 æ¡
-    int stress = 0;        // å‹æµ‹é˜¶æ®µ:8 çº¿ç¨‹ x 25000 æ¡
-    int debugFiltered = 0; // åº”ä¸º 0(INFO æœŸé—´æ‰“çš„ DEBUG)
-    int newClient = 0;     // åº”ä¸º 1
-    int tidMarkers = 0;    // æ™®é€šæ—¥å¿—è¡Œåº”æ°å¥½ 1 ä¸ª
-    int overflowWarn = 0;  // é˜Ÿåˆ—ä¸¢å¼ƒæç¤ºè¡Œæ•°
-    bool seen[4][100] = {}; // worker æ¯å¯¹ (i,j) åº”æ°å¥½å‡ºç°ä¸€æ¬¡
+    int worker = 0;        // È·¶¨ĞÔ½×¶Î:4 Ïß³Ì x 100 Ìõ
+    int stress = 0;        // Ñ¹²â½×¶Î:8 Ïß³Ì x 25000 Ìõ
+    int debugFiltered = 0; // Ó¦Îª 0(INFO ÆÚ¼ä´òµÄ DEBUG)
+    int newClient = 0;     // Ó¦Îª 1
+    int tidMarkers = 0;    // ÆÕÍ¨ÈÕÖ¾ĞĞÓ¦Ç¡ºÃ 1 ¸ö
+    int overflowWarn = 0;  // ¶ÓÁĞ¶ªÆúÌáÊ¾ĞĞÊı
+    bool seen[4][100] = {}; // worker Ã¿¶Ô (i,j) Ó¦Ç¡ºÃ³öÏÖÒ»´Î
 };
 
 Stats scanFile(const char* path) {
@@ -97,31 +97,31 @@ Stats scanFile(const char* path) {
     return s;
 }
 
-// ç›´æ¥éªŒè¯ MessageQueue æœ‰ç•Œæ¨¡å¼:æ»¡æ—¶ä¸¢æœ€æ—§ã€ä¿ç•™æœ€æ–°ã€è®¡æ•°æ­£ç¡®
+// Ö±½ÓÑéÖ¤ MessageQueue ÓĞ½çÄ£Ê½:ÂúÊ±¶ª×î¾É¡¢±£Áô×îĞÂ¡¢¼ÆÊıÕıÈ·
 void testMessageQueueDropPolicy() {
     MessageQueue q(4);
     std::vector<int> got;
     for (int i = 0; i < 10; ++i) {
         q.pushOverrunOldest([&got, i] { got.push_back(i); });
     }
-    expect(q.size() == 4, "æœ‰ç•Œé˜Ÿåˆ—å®¹é‡ä¿æŒä¸º 4");
-    expect(q.droppedCount() == 6, "ä¸¢å¼ƒè®¡æ•° = 6(ä¸¢æœ€æ—§ä¿æœ€æ–°)");
+    expect(q.size() == 4, "ÓĞ½ç¶ÓÁĞÈİÁ¿±£³ÖÎª 4");
+    expect(q.droppedCount() == 6, "¶ªÆú¼ÆÊı = 6(¶ª×î¾É±£×îĞÂ)");
 
     MessageQueue::Task t;
     while (q.tryPop(t)) {
         t();
     }
     expect(got.size() == 4 && got[0] == 6 && got[3] == 9,
-           "ä¸¢æœ€æ—§:ä¿ç•™æœ€å 4 æ¡(6,7,8,9)");
+           "¶ª×î¾É:±£Áô×îºó 4 Ìõ(6,7,8,9)");
 }
 
 } // namespace
 
 int main() {
-    // ç¬¬ä¸€æ¬¡æ‰“æ—¥å¿—å‰é…ç½®:æ—¥å¿—æ–‡ä»¶ + å°å®¹é‡æœ‰ç•Œé˜Ÿåˆ—(æ»¡æ—¶ä¸¢æœ€æ—§)
+    // µÚÒ»´Î´òÈÕÖ¾Ç°ÅäÖÃ:ÈÕÖ¾ÎÄ¼ş + Ğ¡ÈİÁ¿ÓĞ½ç¶ÓÁĞ(ÂúÊ±¶ª×î¾É)
     logger::init("test_logger.log", 1024);
 
-    // ---- é˜¶æ®µ 1:ç¡®å®šæ€§æ­£ç¡®æ€§ ----
+    // ---- ½×¶Î 1:È·¶¨ĞÔÕıÈ·ĞÔ ----
     logger::setLogLevel(logger::LOG_LEVEL_INFO);
     LOG_DEBUG("this line is DEBUG, should NOT appear after setting INFO");
     LOG_INFO("start listening on port %d", 8888);
@@ -131,7 +131,7 @@ int main() {
     logger::setLogLevel(logger::LOG_LEVEL_DEBUG);
     LOG_DEBUG("new client fd=%d", 7);
 
-    // 4 ä¸ªçº¿ç¨‹åŒæ—¶æ‰“æ—¥å¿—,æ£€æŸ¥æ¯è¡Œå®Œæ•´ã€ä¸äº¤é”™
+    // 4 ¸öÏß³ÌÍ¬Ê±´òÈÕÖ¾,¼ì²éÃ¿ĞĞÍêÕû¡¢²»½»´í
     {
         std::vector<std::thread> threads;
         for (int i = 0; i < 4; ++i) {
@@ -145,10 +145,10 @@ int main() {
             t.join();
         }
     }
-    // åŒæ­¥ç‚¹:ç­‰é˜¶æ®µ 1 çš„æ—¥å¿—å…¨éƒ¨è½ç›˜,å†è¿›å…¥å‹æµ‹é˜¶æ®µ
+    // Í¬²½µã:µÈ½×¶Î 1 µÄÈÕÖ¾È«²¿ÂäÅÌ,ÔÙ½øÈëÑ¹²â½×¶Î
     logger::flush();
 
-    // ---- é˜¶æ®µ 2:é«˜å¹¶å‘å‹æ—¥å¿—,éªŒè¯"ä¸¢æœ€æ—§ä¸é˜»å¡ç”Ÿäº§è€…" ----
+    // ---- ½×¶Î 2:¸ß²¢·¢Ñ¹ÈÕÖ¾,ÑéÖ¤"¶ª×î¾É²»×èÈûÉú²úÕß" ----
     {
         std::vector<std::thread> threads;
         for (int i = 0; i < 8; ++i) {
@@ -163,15 +163,15 @@ int main() {
         }
     }
 
-    // å…³é—­åå°çº¿ç¨‹:æ’ç©ºé˜Ÿåˆ— + flush,ç¡®ä¿è½ç›˜åå†æ£€æŸ¥
+    // ¹Ø±ÕºóÌ¨Ïß³Ì:ÅÅ¿Õ¶ÓÁĞ + flush,È·±£ÂäÅÌºóÔÙ¼ì²é
     logger::shutdown();
 
-    // ---- æ ¡éªŒ ----
+    // ---- Ğ£Ñé ----
     testMessageQueueDropPolicy();
 
     const Stats s = scanFile("test_logger.log");
 
-    expect(s.worker == 400, "400 æ¡ worker æ—¥å¿—å…¨éƒ¨è½ç›˜");
+    expect(s.worker == 400, "400 Ìõ worker ÈÕÖ¾È«²¿ÂäÅÌ");
     int missing = 0;
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 100; ++j) {
@@ -180,12 +180,12 @@ int main() {
             }
         }
     }
-    expect(missing == 0, "400 æ¡ worker æ—¥å¿—æ¯è¡Œå®Œæ•´ã€æ— ä¸¢å¤±æ— äº¤é”™");
-    expect(s.debugFiltered == 0, "INFO çº§åˆ«ä¸‹ DEBUG ä¸è½ç›˜");
-    expect(s.newClient == 1, "æ¢å¤ DEBUG çº§åˆ«åæ—¥å¿—æ­£å¸¸è½ç›˜");
-    expect(s.tidMarkers == s.total - s.overflowWarn, "æ™®é€šæ—¥å¿—è¡Œæ¯è¡Œæ°å¥½ä¸€ä¸ª [tid=] æ ‡è®°");
-    expect(s.stress > 0, "å‹æµ‹æ—¥å¿—æœ‰è½ç›˜(éƒ¨åˆ†è¢«ä¸¢å¼ƒä¹Ÿå¯æ¥å—)");
-    std::printf("ç»Ÿè®¡: æ€»è¡Œæ•°=%d, worker=%d, stress=%d, ä¸¢å¼ƒæç¤º=%d, tidæ ‡è®°=%d\n",
+    expect(missing == 0, "400 Ìõ worker ÈÕÖ¾Ã¿ĞĞÍêÕû¡¢ÎŞ¶ªÊ§ÎŞ½»´í");
+    expect(s.debugFiltered == 0, "INFO ¼¶±ğÏÂ DEBUG ²»ÂäÅÌ");
+    expect(s.newClient == 1, "»Ö¸´ DEBUG ¼¶±ğºóÈÕÖ¾Õı³£ÂäÅÌ");
+    expect(s.tidMarkers == s.total - s.overflowWarn, "ÆÕÍ¨ÈÕÖ¾ĞĞÃ¿ĞĞÇ¡ºÃÒ»¸ö [tid=] ±ê¼Ç");
+    expect(s.stress > 0, "Ñ¹²âÈÕÖ¾ÓĞÂäÅÌ(²¿·Ö±»¶ªÆúÒ²¿É½ÓÊÜ)");
+    std::printf("Í³¼Æ: ×ÜĞĞÊı=%d, worker=%d, stress=%d, ¶ªÆúÌáÊ¾=%d, tid±ê¼Ç=%d\n",
                 s.total, s.worker, s.stress, s.overflowWarn, s.tidMarkers);
 
     if (g_failures == 0) {

@@ -22,38 +22,38 @@ namespace logger {
 
 namespace {
 
-// æœ€ä½æ˜¾ç¤ºçº§åˆ«(åŸå­å˜é‡:setLogLevel / isEnabled æ— éœ€åŠ é”)
+// ×îµÍÏÔÊ¾¼¶±ğ(Ô­×Ó±äÁ¿:setLogLevel / isEnabled ÎŞĞè¼ÓËø)
 std::atomic<int> g_minLevel{LOG_LEVEL_DEBUG};
 
 const char* kLevelNames[] = {"DEBUG", "INFO", "WARN", "ERROR"};
 constexpr int kLevelCount = 4;
 
-// é»˜è®¤é…ç½®(æœªæ˜¾å¼ init / initFromFile ä¸”æ²¡æœ‰é…ç½®æ–‡ä»¶æ—¶ä½¿ç”¨)
+// Ä¬ÈÏÅäÖÃ(Î´ÏÔÊ½ init / initFromFile ÇÒÃ»ÓĞÅäÖÃÎÄ¼şÊ±Ê¹ÓÃ)
 constexpr char kDefaultConfigFile[] = "logger.conf";
 constexpr char kDefaultFilePath[] = "server.log";
 constexpr char kDefaultFormat[] = "[%t] [%l] [tid=%T] %m";
 constexpr size_t kDefaultQueueCapacity = 65536;
 
-// å•æ¡æ—¥å¿—æ¶ˆæ¯æœ€å¤§é•¿åº¦(è¶…å‡ºéƒ¨åˆ†æˆªæ–­,ä¸æ—§ç‰ˆä¸€è‡´)
+// µ¥ÌõÈÕÖ¾ÏûÏ¢×î´ó³¤¶È(³¬³ö²¿·Ö½Ø¶Ï,Óë¾É°æÒ»ÖÂ)
 constexpr size_t kMaxMessageLen = 1024;
-// åå°çº¿ç¨‹å•æ¬¡æœ€å¤šè¿ç»­å¤„ç†çš„ä»»åŠ¡æ•°(æ”’æ‰¹å†™ç›˜)
+// ºóÌ¨Ïß³Ìµ¥´Î×î¶àÁ¬Ğø´¦ÀíµÄÈÎÎñÊı(ÔÜÅúĞ´ÅÌ)
 constexpr size_t kMaxBatch = 64;
-// stdio ç¼“å†²åŒºå¤§å°:æ”’æ»¡æ‰çœŸæ­£å‘èµ·å†™ç›˜,å‡å°‘ I/O æ¬¡æ•°
+// stdio »º³åÇø´óĞ¡:ÔÜÂú²ÅÕæÕı·¢ÆğĞ´ÅÌ,¼õÉÙ I/O ´ÎÊı
 constexpr size_t kWriteBufferSize = 64 * 1024;
 
-// ---- å¯åŠ¨å‰é…ç½®(init / initFromFile / addSink ä½¿ç”¨;åå°çº¿ç¨‹å¯åŠ¨åä¸å†ç”Ÿæ•ˆ) ----
+// ---- Æô¶¯Ç°ÅäÖÃ(init / initFromFile / addSink Ê¹ÓÃ;ºóÌ¨Ïß³ÌÆô¶¯ºó²»ÔÙÉúĞ§) ----
 std::mutex g_configMutex;
 std::string g_filePath = kDefaultFilePath;
 std::string g_format = kDefaultFormat;
 size_t g_queueCapacity = kDefaultQueueCapacity;
-bool g_fileEnabled = true;    // é»˜è®¤åªè¾“å‡ºåˆ°æ–‡ä»¶(ä¸æ—§ç‰ˆè¡Œä¸ºä¸€è‡´)
+bool g_fileEnabled = true;    // Ä¬ÈÏÖ»Êä³öµ½ÎÄ¼ş(Óë¾É°æĞĞÎªÒ»ÖÂ)
 bool g_consoleEnabled = false;
-bool g_configLoaded = false;  // æ˜¯å¦å·²æ˜¾å¼ init / initFromFile
+bool g_configLoaded = false;  // ÊÇ·ñÒÑÏÔÊ½ init / initFromFile
 bool g_started = false;
 std::vector<std::unique_ptr<Sink>> g_extraSinks;
 
-// çº¿ç¨‹ id å­—ç¬¦ä¸²åŒ–ç¼“å­˜:ç”¨ POD å­—ç¬¦æ•°ç»„(æ— åŠ¨æ€åˆå§‹åŒ–ã€æ— ææ„å‡½æ•°),
-// é¿å… MinGW ä¸‹ thread_local std::string åœ¨é«˜å¹¶å‘å †åˆ†é…æ—¶å‡ºç°å †æŸå
+// Ïß³Ì id ×Ö·û´®»¯»º´æ:ÓÃ POD ×Ö·ûÊı×é(ÎŞ¶¯Ì¬³õÊ¼»¯¡¢ÎŞÎö¹¹º¯Êı),
+// ±ÜÃâ MinGW ÏÂ thread_local std::string ÔÚ¸ß²¢·¢¶Ñ·ÖÅäÊ±³öÏÖ¶ÑËğ»µ
 thread_local char g_tidBuf[48];
 thread_local bool g_tidReady = false;
 
@@ -67,7 +67,7 @@ int clampLevel(int level) {
     return level;
 }
 
-// çº¿ç¨‹å®‰å…¨çš„æ—¶é—´å­—ç¬¦ä¸²(localtime_s / localtime_r éƒ½è¾“å‡ºåˆ°è°ƒç”¨æ–¹æä¾›çš„ tm)
+// Ïß³Ì°²È«µÄÊ±¼ä×Ö·û´®(localtime_s / localtime_r ¶¼Êä³öµ½µ÷ÓÃ·½Ìá¹©µÄ tm)
 std::string nowTimeString() {
     std::time_t now = std::time(nullptr);
     std::tm timeInfo{};
@@ -100,7 +100,7 @@ std::string toLower(std::string s) {
     return s;
 }
 
-// è§£æçº§åˆ«é…ç½®é¡¹:debug / info / warn / error(æˆ– 0~3);å¤±è´¥è¿”å› -1
+// ½âÎö¼¶±ğÅäÖÃÏî:debug / info / warn / error(»ò 0~3);Ê§°Ü·µ»Ø -1
 int parseLevel(const std::string& raw) {
     const std::string s = toLower(trim(raw));
     if (s == "debug" || s == "0") {
@@ -118,7 +118,7 @@ int parseLevel(const std::string& raw) {
     return -1;
 }
 
-// å¤„ç†ä¸€è¡Œ "key = value" é…ç½®;å¿…é¡»åœ¨æŒæœ‰ g_configMutex æ—¶è°ƒç”¨
+// ´¦ÀíÒ»ĞĞ "key = value" ÅäÖÃ;±ØĞëÔÚ³ÖÓĞ g_configMutex Ê±µ÷ÓÃ
 void parseConfigLine(const std::string& key, const std::string& value, int lineNo) {
     if (key == "level") {
         const int lv = parseLevel(value);
@@ -133,7 +133,7 @@ void parseConfigLine(const std::string& key, const std::string& value, int lineN
             g_format = value;
         }
     } else if (key == "target") {
-        // è¾“å‡ºæœå‘:é€—å·åˆ†éš”çš„å¤šä¸ªç›®æ ‡,ä¾¿äºåç»­æ‰©å±•æ›´å¤šè¾“å‡ºæ–¹å¼
+        // Êä³ö³¯Ïò:¶ººÅ·Ö¸ôµÄ¶à¸öÄ¿±ê,±ãÓÚºóĞøÀ©Õ¹¸ü¶àÊä³ö·½Ê½
         bool console = false;
         bool file = false;
         size_t pos = 0;
@@ -179,7 +179,7 @@ void parseConfigLine(const std::string& key, const std::string& value, int lineN
     }
 }
 
-// è§£æé…ç½®æ–‡ä»¶;# å¼€å¤´ä¸ºæ³¨é‡Š,ç©ºè¡Œå¿½ç•¥;å¿…é¡»åœ¨æŒæœ‰ g_configMutex æ—¶è°ƒç”¨
+// ½âÎöÅäÖÃÎÄ¼ş;# ¿ªÍ·Îª×¢ÊÍ,¿ÕĞĞºöÂÔ;±ØĞëÔÚ³ÖÓĞ g_configMutex Ê±µ÷ÓÃ
 void parseConfigFile(const std::string& path) {
     std::ifstream in(path);
     if (!in) {
@@ -210,7 +210,7 @@ void parseConfigFile(const std::string& path) {
     }
 }
 
-// æŒ‰æ ¼å¼å­—ç¬¦ä¸²æ¸²æŸ“ä¸€è¡Œæ—¥å¿—(æœ«å°¾è‡ªåŠ¨è¡¥ '\n')
+// °´¸ñÊ½×Ö·û´®äÖÈ¾Ò»ĞĞÈÕÖ¾(Ä©Î²×Ô¶¯²¹ '\n')
 std::string renderLine(const std::string& format, const std::string& time,
                        const char* levelName, const std::string& tid,
                        const std::string& msg) {
@@ -252,8 +252,8 @@ std::string renderLine(const std::string& format, const std::string& time,
     return out;
 }
 
-// ä¸€æ¡å¾…å†™æ—¥å¿—:æ¶ˆæ¯æœ¬ä½“ä¸æ—¶é—´/çº¿ç¨‹idåœ¨ç”Ÿäº§è€…çº¿ç¨‹å‡†å¤‡å¥½,
-// è¡Œæ ¼å¼äº¤ç»™åå°çº¿ç¨‹æ¸²æŸ“,æ ¼å¼å­—ç¬¦ä¸²åªåœ¨åå°çº¿ç¨‹è¯»å–,æ— æ•°æ®ç«äº‰
+// Ò»Ìõ´ıĞ´ÈÕÖ¾:ÏûÏ¢±¾ÌåÓëÊ±¼ä/Ïß³ÌidÔÚÉú²úÕßÏß³Ì×¼±¸ºÃ,
+// ĞĞ¸ñÊ½½»¸øºóÌ¨Ïß³ÌäÖÈ¾,¸ñÊ½×Ö·û´®Ö»ÔÚºóÌ¨Ïß³Ì¶ÁÈ¡,ÎŞÊı¾İ¾ºÕù
 struct LogRecord {
     int level = LOG_LEVEL_INFO;
     std::string time;
@@ -261,7 +261,7 @@ struct LogRecord {
     std::string msg;
 };
 
-// æ§åˆ¶å°è¾“å‡º:å†™ stdout
+// ¿ØÖÆÌ¨Êä³ö:Ğ´ stdout
 class ConsoleSink : public Sink {
 public:
     void write(const char* data, size_t len) override {
@@ -273,7 +273,7 @@ public:
     }
 };
 
-// æ–‡ä»¶è¾“å‡º:è¿½åŠ å†™ + å¤§ç¼“å†²åŒº;æ‰“ä¸å¼€æ–‡ä»¶æ—¶é€€å› stdout(ä¿è¯æ—¥å¿—ä¸ä¸¢)
+// ÎÄ¼şÊä³ö:×·¼ÓĞ´ + ´ó»º³åÇø;´ò²»¿ªÎÄ¼şÊ±ÍË»Ø stdout(±£Ö¤ÈÕÖ¾²»¶ª)
 class FileSink : public Sink {
 public:
     explicit FileSink(std::string path) : path_(std::move(path)) {
@@ -313,29 +313,29 @@ private:
     char writeBuf_[kWriteBufferSize];
 };
 
-// å¼‚æ­¥æ—¥å¿—å™¨:
-//   LOG_* åªè´Ÿè´£æ ¼å¼åŒ–å¹¶å…¥é˜Ÿ,ç«‹å³è¿”å›(ä¸ç¢°ç£ç›˜);
-//   çœŸæ­£çš„å†™ç›˜ç”±åå°çº¿ç¨‹ä» MessageQueue æ‰¹é‡å–å‡ºå,åˆ†å‘ç»™æ‰€æœ‰è¾“å‡ºç›®æ ‡ã€‚
+// Òì²½ÈÕÖ¾Æ÷:
+//   LOG_* Ö»¸ºÔğ¸ñÊ½»¯²¢Èë¶Ó,Á¢¼´·µ»Ø(²»Åö´ÅÅÌ);
+//   ÕæÕıµÄĞ´ÅÌÓÉºóÌ¨Ïß³Ì´Ó MessageQueue ÅúÁ¿È¡³öºó,·Ö·¢¸øËùÓĞÊä³öÄ¿±ê¡£
 class AsyncLogger {
 public:
     AsyncLogger() {
         {
             std::lock_guard<std::mutex> lock(g_configMutex);
-            // æœªæ˜¾å¼ init / initFromFile æ—¶,è‡ªåŠ¨åŠ è½½é»˜è®¤é…ç½®æ–‡ä»¶
+            // Î´ÏÔÊ½ init / initFromFile Ê±,×Ô¶¯¼ÓÔØÄ¬ÈÏÅäÖÃÎÄ¼ş
             if (!g_configLoaded) {
                 parseConfigFile(kDefaultConfigFile);
             }
             format_ = g_format;
             capacity_ = g_queueCapacity;
 
-            // å†…ç½®è¾“å‡ºç›®æ ‡æŒ‰é…ç½®çš„"è¾“å‡ºæœå‘"åˆ›å»º(console / file)
+            // ÄÚÖÃÊä³öÄ¿±ê°´ÅäÖÃµÄ"Êä³ö³¯Ïò"´´½¨(console / file)
             if (g_consoleEnabled) {
                 sinks_.push_back(std::make_unique<ConsoleSink>());
             }
             if (g_fileEnabled) {
                 sinks_.push_back(std::make_unique<FileSink>(g_filePath));
             }
-            // ç”¨æˆ·é€šè¿‡ addSink æ³¨å†Œçš„è‡ªå®šä¹‰è¾“å‡ºç›®æ ‡(å¯æ‰©å±•)
+            // ÓÃ»§Í¨¹ı addSink ×¢²áµÄ×Ô¶¨ÒåÊä³öÄ¿±ê(¿ÉÀ©Õ¹)
             for (auto& sink : g_extraSinks) {
                 sinks_.push_back(std::move(sink));
             }
@@ -353,23 +353,23 @@ public:
     AsyncLogger(const AsyncLogger&) = delete;
     AsyncLogger& operator=(const AsyncLogger&) = delete;
 
-    // ç”Ÿäº§ç«¯:æŠŠä¸€æ¡æ—¥å¿—å¡è¿›é˜Ÿåˆ—,ç«‹å³è¿”å›ã€‚
-    // é˜Ÿåˆ—æ»¡æ—¶é‡‡ç”¨"ä¸¢æœ€æ—§ä¿æœ€æ–°"ç­–ç•¥(pushOverrunOldest),ç»ä¸é˜»å¡ç”Ÿäº§è€…ã€‚
+    // Éú²ú¶Ë:°ÑÒ»ÌõÈÕÖ¾Èû½ø¶ÓÁĞ,Á¢¼´·µ»Ø¡£
+    // ¶ÓÁĞÂúÊ±²ÉÓÃ"¶ª×î¾É±£×îĞÂ"²ßÂÔ(pushOverrunOldest),¾ø²»×èÈûÉú²úÕß¡£
     void enqueue(LogRecord rec) {
         if (closed_.load(std::memory_order_relaxed)) {
-            return; // å·²å…³é—­,åç»­æ—¥å¿—ç›´æ¥ä¸¢å¼ƒ
+            return; // ÒÑ¹Ø±Õ,ºóĞøÈÕÖ¾Ö±½Ó¶ªÆú
         }
         queue_->pushOverrunOldest([this, rec = std::move(rec)] {
             writeRecord(rec);
         });
     }
 
-    // å…³é—­:å…ˆç¦æ­¢æ–°æ¶ˆæ¯å…¥é˜Ÿ,å†æ’ç©ºé˜Ÿåˆ— + flush,æœ€å join åå°çº¿ç¨‹,
-    // å¹¶é”€æ¯è¾“å‡ºç›®æ ‡(æ–‡ä»¶ flush + å…³é—­),ä¿è¯ shutdown åå†…å®¹ç«‹å³å¯è§
+    // ¹Ø±Õ:ÏÈ½ûÖ¹ĞÂÏûÏ¢Èë¶Ó,ÔÙÅÅ¿Õ¶ÓÁĞ + flush,×îºó join ºóÌ¨Ïß³Ì,
+    // ²¢Ïú»ÙÊä³öÄ¿±ê(ÎÄ¼ş flush + ¹Ø±Õ),±£Ö¤ shutdown ºóÄÚÈİÁ¢¼´¿É¼û
     void shutdown() {
         bool expected = false;
         if (!closed_.compare_exchange_strong(expected, true)) {
-            return; // å·²ç»å…³è¿‡
+            return; // ÒÑ¾­¹Ø¹ı
         }
         queue_->close();
         if (writer_.joinable()) {
@@ -378,10 +378,10 @@ public:
         sinks_.clear();
     }
 
-    // å±éšœä»»åŠ¡:ç­‰åˆ°å®ƒè¢«åå°çº¿ç¨‹æ‰§è¡Œ,è¯´æ˜å®ƒä¹‹å‰å…¥é˜Ÿçš„æ—¥å¿—éƒ½å·²å†™ç›˜
+    // ÆÁÕÏÈÎÎñ:µÈµ½Ëü±»ºóÌ¨Ïß³ÌÖ´ĞĞ,ËµÃ÷ËüÖ®Ç°Èë¶ÓµÄÈÕÖ¾¶¼ÒÑĞ´ÅÌ
     void flush() {
         if (closed_.load(std::memory_order_relaxed)) {
-            return; // å·²å…³é—­,æ— å¯ç­‰å¾…
+            return; // ÒÑ¹Ø±Õ,ÎŞ¿ÉµÈ´ı
         }
         auto done = std::make_shared<std::promise<void>>();
         std::future<void> fut = done->get_future();
@@ -397,19 +397,19 @@ private:
         while (true) {
             MessageQueue::Task task;
             if (!queue_->pop(task)) {
-                break; // é˜Ÿåˆ—å·²å…³é—­ä¸”å·²æ’ç©º
+                break; // ¶ÓÁĞÒÑ¹Ø±ÕÇÒÒÑÅÅ¿Õ
             }
             task();
 
-            // æ‰¹é‡:æŠŠå·²ç»å †ç§¯çš„æ¶ˆæ¯å°½é‡ä¸€æ¬¡å–å®Œ,å‡å°‘å†™ç›˜æ¬¡æ•°
+            // ÅúÁ¿:°ÑÒÑ¾­¶Ñ»ıµÄÏûÏ¢¾¡Á¿Ò»´ÎÈ¡Íê,¼õÉÙĞ´ÅÌ´ÎÊı
             size_t batch = 1;
             while (batch < kMaxBatch && queue_->tryPop(task)) {
                 task();
                 ++batch;
             }
 
-            // é˜Ÿåˆ—å·²ç©º â†’ ç«‹å³ flush,ä¿è¯æ—¥å¿—åŠæ—¶å¯è§;
-            // é˜Ÿåˆ—ä»æœ‰ç§¯å‹ â†’ ç»§ç»­æ”’ç€,ä¸‹æ¬¡æ‰¹é‡å†å†™
+            // ¶ÓÁĞÒÑ¿Õ ¡ú Á¢¼´ flush,±£Ö¤ÈÕÖ¾¼°Ê±¿É¼û;
+            // ¶ÓÁĞÈÔÓĞ»ıÑ¹ ¡ú ¼ÌĞøÔÜ×Å,ÏÂ´ÎÅúÁ¿ÔÙĞ´
             if (queue_->size() == 0) {
                 flushSinks();
                 reportDropsIfChanged(lastReportedDrops);
@@ -435,7 +435,7 @@ private:
         }
     }
 
-    // é˜Ÿåˆ—å‘ç”Ÿè¿‡"ä¸¢æœ€æ—§"æ—¶,æŠŠç´¯è®¡ä¸¢å¼ƒæ•°å†™è¿›æ—¥å¿—,è®©ä¸¢å¼ƒå¯è§å¯å®¡è®¡
+    // ¶ÓÁĞ·¢Éú¹ı"¶ª×î¾É"Ê±,°ÑÀÛ¼Æ¶ªÆúÊıĞ´½øÈÕÖ¾,ÈÃ¶ªÆú¿É¼û¿ÉÉó¼Æ
     void reportDropsIfChanged(size_t& lastReported) {
         const size_t dropped = queue_->droppedCount();
         if (dropped == lastReported) {
@@ -459,7 +459,7 @@ private:
     std::atomic<bool> closed_{false};
 };
 
-// é¦–æ¬¡ä½¿ç”¨(æ‰“ç¬¬ä¸€æ¡æ—¥å¿— / shutdown)æ—¶æ‰æ„é€ å¹¶å¯åŠ¨åå°çº¿ç¨‹
+// Ê×´ÎÊ¹ÓÃ(´òµÚÒ»ÌõÈÕÖ¾ / shutdown)Ê±²Å¹¹Ôì²¢Æô¶¯ºóÌ¨Ïß³Ì
 AsyncLogger& instance() {
     static AsyncLogger logger;
     return logger;
@@ -482,7 +482,7 @@ bool isEnabled(int level) {
 void addSink(std::unique_ptr<Sink> sink) {
     std::lock_guard<std::mutex> lock(g_configMutex);
     if (g_started || !sink) {
-        return; // åå°çº¿ç¨‹å·²å¯åŠ¨,æˆ–ç©ºæŒ‡é’ˆ,å¿½ç•¥
+        return; // ºóÌ¨Ïß³ÌÒÑÆô¶¯,»ò¿ÕÖ¸Õë,ºöÂÔ
     }
     g_extraSinks.push_back(std::move(sink));
 }
@@ -490,9 +490,9 @@ void addSink(std::unique_ptr<Sink> sink) {
 void init(const char* filePath, size_t queueCapacity) {
     std::lock_guard<std::mutex> lock(g_configMutex);
     if (g_started) {
-        return; // åå°çº¿ç¨‹å·²å¯åŠ¨,é…ç½®ä¸å†ç”Ÿæ•ˆ
+        return; // ºóÌ¨Ïß³ÌÒÑÆô¶¯,ÅäÖÃ²»ÔÙÉúĞ§
     }
-    g_configLoaded = true; // æ˜¾å¼é…ç½®,ä¸å†è‡ªåŠ¨åŠ è½½ logger.conf
+    g_configLoaded = true; // ÏÔÊ½ÅäÖÃ,²»ÔÙ×Ô¶¯¼ÓÔØ logger.conf
     if (filePath != nullptr && filePath[0] != '\0') {
         g_filePath = filePath;
     }
@@ -502,7 +502,7 @@ void init(const char* filePath, size_t queueCapacity) {
 void initFromFile(const char* path) {
     std::lock_guard<std::mutex> lock(g_configMutex);
     if (g_started) {
-        return; // åå°çº¿ç¨‹å·²å¯åŠ¨,é…ç½®ä¸å†ç”Ÿæ•ˆ
+        return; // ºóÌ¨Ïß³ÌÒÑÆô¶¯,ÅäÖÃ²»ÔÙÉúĞ§
     }
     g_configLoaded = true;
     parseConfigFile(path != nullptr && path[0] != '\0' ? path : kDefaultConfigFile);
@@ -517,22 +517,22 @@ void flush() {
 }
 
 void logMessage(int level, const char* fmt, ...) {
-    // é¦–æ¬¡è°ƒç”¨ä¼šæ„é€ åå°æ—¥å¿—å™¨å¹¶(æœªæ˜¾å¼é…ç½®æ—¶)åŠ è½½é»˜è®¤é…ç½®æ–‡ä»¶,
-    // ä¿è¯é…ç½®æ–‡ä»¶é‡Œçš„ level åœ¨ç¬¬ä¸€æ¬¡æ—¥å¿—åˆ¤æ–­ä¹‹å‰ç”Ÿæ•ˆ
+    // Ê×´Îµ÷ÓÃ»á¹¹ÔìºóÌ¨ÈÕÖ¾Æ÷²¢(Î´ÏÔÊ½ÅäÖÃÊ±)¼ÓÔØÄ¬ÈÏÅäÖÃÎÄ¼ş,
+    // ±£Ö¤ÅäÖÃÎÄ¼şÀïµÄ level ÔÚµÚÒ»´ÎÈÕÖ¾ÅĞ¶ÏÖ®Ç°ÉúĞ§
     AsyncLogger& logger = instance();
     if (!isEnabled(level)) {
         return;
     }
 
-    // 1. æ ¼å¼åŒ–æ¶ˆæ¯æœ¬ä½“(è¶…è¿‡ 1024 å­—èŠ‚ä¼šè¢«æˆªæ–­,ä¸æ—§ç‰ˆä¸€è‡´)
+    // 1. ¸ñÊ½»¯ÏûÏ¢±¾Ìå(³¬¹ı 1024 ×Ö½Ú»á±»½Ø¶Ï,Óë¾É°æÒ»ÖÂ)
     char msg[kMaxMessageLen];
     va_list args;
     va_start(args, fmt);
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
 
-    // 2. ç»„è£…è®°å½•:æ—¶é—´åœ¨å…¥é˜Ÿå‰æ‰“å¥½,åå°æŒ‰å…¥é˜Ÿé¡ºåºè½ç›˜,
-    //    åŒä¸€ç”Ÿäº§è€…çº¿ç¨‹çš„æ—¥å¿—ä¸¥æ ¼ä¿æŒäº§ç”Ÿé¡ºåº
+    // 2. ×é×°¼ÇÂ¼:Ê±¼äÔÚÈë¶ÓÇ°´òºÃ,ºóÌ¨°´Èë¶ÓË³ĞòÂäÅÌ,
+    //    Í¬Ò»Éú²úÕßÏß³ÌµÄÈÕÖ¾ÑÏ¸ñ±£³Ö²úÉúË³Ğò
     LogRecord rec;
     rec.level = clampLevel(level);
     rec.time = nowTimeString();
@@ -547,7 +547,7 @@ void logMessage(int level, const char* fmt, ...) {
     rec.tid = g_tidBuf;
     rec.msg = msg;
 
-    // 3. åªå…¥é˜Ÿ,ç«‹å³è¿”å›:ç£ç›˜ I/O å…¨éƒ¨äº¤ç»™åå°çº¿ç¨‹
+    // 3. Ö»Èë¶Ó,Á¢¼´·µ»Ø:´ÅÅÌ I/O È«²¿½»¸øºóÌ¨Ïß³Ì
     logger.enqueue(std::move(rec));
 }
 
