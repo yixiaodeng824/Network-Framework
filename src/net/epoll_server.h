@@ -6,6 +6,7 @@
 #include <mutex>
 #include <atomic>
 #include <ctime>
+#include <functional>
 
 //由于不知道消息有多长，在每条消息前面加四个字节的长度表示消息体的长度
 class EpollServer {
@@ -14,6 +15,9 @@ public:
 	void start();
 	static void handle_signal(int);
 	void epollserver_exit();
+	void setMessageHandler(std::function<void(EpollServer&,int,const std::string&)> f);
+	void sendTo(int fd, const std::string& msg);
+	void broadcast(int exptr_fd, const std::string& msg);
 	~EpollServer();
 private:
 	void run();
@@ -31,4 +35,5 @@ private:
 	std::map<int, Connection> fd_list;
 	std::mutex client_mutex;
 	int heartbeat_timeout_;
+	std::function<void(EpollServer&, int, const std::string&)>	handler_;
 };

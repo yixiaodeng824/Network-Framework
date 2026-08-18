@@ -40,6 +40,9 @@ int main(int argc,char* argv[]) {
 	}
 	ThreadPool tp(threadnum);
 	EpollServer es(port, tp,heartbeats);
+	es.setMessageHandler([](EpollServer& server, int fd, const std::string& msg) {
+		server.broadcast(fd,msg);
+		});
 	es.start();
 	return 0;
 }

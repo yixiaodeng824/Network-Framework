@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <ctime>
+#include <vector>
 enum class SendResult {
 	SentAll,    // 发完了
 	Pending,    // 没发完,等 EPOLLOUT 续发
@@ -15,7 +16,8 @@ public:
 	void appendRecv(const char* data, size_t len) {
 		recv_buffer_.append(data, len);
 	}
-	void processBufferedData();
+	std::vector<std::string> processBufferedData();//处理粘包半包,发出msg
+	void sendMsgToSendBuf(const std::string&);
 	SendResult sendReadyMessage();
 	void markClosing() { closing_ = true; }//标记正在关闭
 	bool isClosing()const { return closing_; }//判断是否正在关闭

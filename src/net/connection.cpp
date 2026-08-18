@@ -8,7 +8,8 @@ using namespace std;
 
 
 
-void Connection::processBufferedData() {
+std::vector<std::string> Connection::processBufferedData() {
+	vector<string>	afterPackageResult;
 	while (true) {
 		if (recv_buffer_.length() < 4)	break;
 		uint32_t len;
@@ -17,11 +18,12 @@ void Connection::processBufferedData() {
 		if (recv_buffer_.length() < 4 + len) break;
 
 		string msg = recv_buffer_.substr(4, len);
-		uint32_t resp_len = htonl(msg.size());
-		send_buffer_.append(reinterpret_cast<const char*>(&resp_len), 4);
-		send_buffer_.append(msg);	
+		
+		//交给业务逻辑，待修改
+		afterPackageResult.push_back(msg);
 		recv_buffer_.erase(0, 4 + len);
 	}
+	return afterPackageResult;
 }
 
 SendResult Connection::sendReadyMessage() {
@@ -31,9 +33,15 @@ SendResult Connection::sendReadyMessage() {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			return SendResult::Pending;
 		}
-		return SendResult::Error;
+		return SendResult::Error;	
 	}
 	if (n > 0) send_buffer_.erase(0, n);  //如果有消息 
 	if (!send_buffer_.empty())	write_waiting_ = true;
 	return send_buffer_.empty() ? SendResult::SentAll : SendResult::Pending;
+}
+
+void Connection::sendMsgToSendBuf(const std::string& msg) {
+	uint32_t resp_len = htonl(msg.size());
+	send_buffer_.append(reinterpret_cast<const char*>(&resp_len), 4);
+	send_buffer_.append(msg);
 }

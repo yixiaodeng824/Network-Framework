@@ -144,16 +144,25 @@ void  EpollServer::handleClient(int fd) {
 			}
 		}
 		else if(len > 0){
-			SendResult result{ SendResult::Pending };//消息一次是不是全发完了，全发完就直接无视了，
-			//没全发完登记成epollout等handlewrite继续发
+			vector<string> msgs;
 			{
 				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
 				if (it == fd_list.end())	return;
 				it->second.appendRecv(buf, len);
 				it->second.touchActive();//刷新一下活跃时间
-				it->second.processBufferedData();
-				result = it->second.sendReadyMessage();
+				msgs = move(it->second.processBufferedData());
+			}
+			for (auto& msg : msgs) {
+				if (handler_) handler_(*this, fd, msg);    //锁外触发回调
+			}
+			SendResult result{ SendResult::Pending };//消息一次是不是全发完了，全发完就直接无视了，
+			//没全发完登记成epollout等handlewrite继续发
+			{
+				lock_guard<mutex> lck(client_mutex);
+				auto it = fd_list.find(fd);
+				if (it == fd_list.end()) return;
+				result = it->second.sendReadyMessage();    // 收尾发送
 			}
 
 			epoll_event nev;
@@ -232,7 +241,7 @@ void EpollServer::closeConnection(int fd) {
 	close(fd);
 }
 
-void EpollServer::acceptNewClient() {
+void EpollServer::acceptNewClient() {//调回调函数，确定fd对应的业务逻辑
 	int client_fd = accept(listen_fd_, nullptr, nullptr);
 
 	if (client_fd < 0) {
@@ -258,6 +267,45 @@ void EpollServer::acceptNewClient() {
 	epoll_ctl(epfd_, EPOLL_CTL_MOD,listen_fd_ , &nev1);
 }
 
+void EpollServer::setMessageHandler(std::function<void(EpollServer&, int, const std::string&)> f) {
+	handler_ = move(f);
+}
+
+void EpollServer::sendTo(int fd, const string& msg) {
+	lock_guard<mutex> lck(client_mutex);       
+	auto it = fd_list.find(fd);                 
+	if (it != fd_list.end())                    
+		it->second.sendMsgToSendBuf(msg);                //塞进那个连接的缓冲
+}
+
+void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
+	std::vector<int> toClose;
+	{
+		lock_guard<mutex> lck(client_mutex);
+		for (auto& it : fd_list) {
+			if (it.first == exptr_fd)	continue;
+			it.second.sendMsgToSendBuf(msg);
+		}
+		for (auto& it : fd_list) {
+			auto result = it.second.sendReadyMessage(); 
+			epoll_event nev;
+			nev.data.fd = it.first;
+			if (result == SendResult::SentAll) {
+				nev.events = EPOLLIN | EPOLLONESHOT;
+			}
+			else if (result == SendResult::Pending) {
+				nev.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT;
+			}
+			else {
+				toClose.push_back(it.first);
+			}
+			epoll_ctl(epfd_, EPOLL_CTL_MOD, it.first, &nev);
+		}
+	}
+	for (auto fd : toClose) {              //  锁外,遍历结束才关
+		closeConnection(fd);
+	}
+}
 EpollServer::~EpollServer(){
 	close(epfd_);
 	close(listen_fd_);
