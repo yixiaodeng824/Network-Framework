@@ -36,6 +36,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\log\Logger.cpp" />
+    <ClCompile Include="src\net\connection.cpp" />
     <ClCompile Include="src\net\epoll_server.cpp" />
     <ClCompile Include="src\net\main.cpp" />
     <ClCompile Include="src\thread\MessageQueue.cpp" />
@@ -44,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\log\Logger.h" />
+    <ClInclude Include="src\net\connection.h" />
     <ClInclude Include="src\net\epoll_server.h" />
     <ClInclude Include="src\thread\MessageQueue.h" />
     <ClInclude Include="src\thread\ThreadPool.h" />
