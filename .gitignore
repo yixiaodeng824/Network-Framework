@@ -22,3 +22,7 @@ Release/
 # Python 缓存
 __pycache__/
 *.pyc
+
+# 个人学习笔记(不入库)
+network_notes.md
+docs/
