@@ -14,6 +14,7 @@ obj_linux/
 x64/
 Debug/
 Release/
+*.out
 
 # 编译中间文件
 *.obj
