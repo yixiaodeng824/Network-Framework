@@ -56,3 +56,18 @@ set_tests_properties(
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>"
 )
+
+add_custom_target(bench
+    COMMAND
+        ${CMAKE_COMMAND} -E env
+        NF_SERVER_BINARY=$<TARGET_FILE:server>
+        ${Python3_EXECUTABLE}
+        -m benchmarks.echo
+
+    DEPENDS server
+
+    WORKING_DIRECTORY
+        ${CMAKE_SOURCE_DIR}
+
+    USES_TERMINAL
+)
