@@ -37,3 +37,22 @@ add_executable(server
 target_link_libraries(server
     PRIVATE network_framework
 )
+
+include(CTest)
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+add_test(
+    NAME integration
+    COMMAND
+        ${Python3_EXECUTABLE}
+        -m pytest
+        ${CMAKE_SOURCE_DIR}/tests/integration
+)
+
+set_tests_properties(
+    integration
+    PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>"
+)
