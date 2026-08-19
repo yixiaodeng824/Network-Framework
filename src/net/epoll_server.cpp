@@ -16,6 +16,10 @@ atomic<bool> EpollServer::stop_{ false };
 EpollServer::EpollServer(int port, ThreadPool& pool,int heartbeat_timeout=60):port_(port), pool_(pool),heartbeat_timeout_(heartbeat_timeout) {
 	//创建监听套接字
 	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+	//把listen_fd_也设置为非阻塞
+	int fl = fcntl(listen_fd_, F_GETFL,0);
+	fcntl(listen_fd_, F_SETFL, fl | O_NONBLOCK);
+
 	if (listen_fd_ < 0) { LOG_ERROR("socket failed: %s", strerror(errno)); exit(1); }
 	//确定要绑定的端口
 	sockaddr_in addr;
@@ -74,19 +78,27 @@ void EpollServer::run() {
 	int tick = 0;
 	while (!stop_) {
 		int n = epoll_wait(epfd_, events_, 64, 100);//等待事件发生
+		if (n < 0) {
+			if (errno == EINTR) continue;   // 被信号打断,重新等
+			LOG_ERROR("epoll_wait error: %s", strerror(errno));
+			continue;
+		}
+		//原本结构会让epollout事件优先级大于epollin，这个时候如果事件又读又有东西没写完，写的事件会优先被认领，然后直接等到下一轮
 		for (int i = 0;i < n;i++) {
 			int fd = events_[i].data.fd;
+			uint32_t ev = events_[i].events;
 			if (fd == listen_fd_) {
-				acceptNewClient();
+				if(ev& (EPOLLIN | EPOLLERR | EPOLLHUP))
+					acceptNewClient();
+				continue;
 			}
-			else {
-				if (events_[i].events & EPOLLOUT) {
-					handleWrite(fd);
-				}
-				else {
-					handleClient(fd);
-				}
+			if(ev & (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+				handleClient(fd);
 			}
+			if (ev & EPOLLOUT) {
+				handleWrite(fd);
+			}
+			
 		}
 		if (++tick >= 10) {
 			//1s扫描一次
@@ -99,7 +111,7 @@ void EpollServer::run() {
 
 void EpollServer::start() {
 	//初始化
-	listen(listen_fd_, 5);
+	listen(listen_fd_, 128);// backlog=排队上限,加大防突发连接积压
 	LOG_INFO("start listening on port %d", port_);
 	//先把监听套接字加进epoll事件列表
 	epoll_event ev;
@@ -117,7 +129,7 @@ void EpollServer::handle_signal(int) {
 }
 
 void  EpollServer::handleClient(int fd) {
-	pool_.submit([this, fd] {
+	pool_.post([this, fd] {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
 		if (len == 0) {//关闭fd，可能fd对应的缓冲区仍然有东西，需要全发完再关
@@ -145,6 +157,7 @@ void  EpollServer::handleClient(int fd) {
 		}
 		else if(len > 0){
 			vector<string> msgs;
+			bool frame_error = false;
 			{
 				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
@@ -152,6 +165,11 @@ void  EpollServer::handleClient(int fd) {
 				it->second.appendRecv(buf, len);
 				it->second.touchActive();//刷新一下活跃时间
 				msgs = move(it->second.processBufferedData());
+				frame_error = it->second.hasFrameError();
+			}
+			if (frame_error) {
+				closeConnection(fd);
+				return;
 			}
 			for (auto& msg : msgs) {
 				if (handler_) handler_(*this, fd, msg);    //锁外触发回调
@@ -195,7 +213,7 @@ void  EpollServer::handleClient(int fd) {
 }
 
 void EpollServer::handleWrite(int fd) {
-	pool_.submit([this, fd] {
+	pool_.post([this, fd] {
 		SendResult result;
 		bool closing = false;
 		{
@@ -242,25 +260,30 @@ void EpollServer::closeConnection(int fd) {
 }
 
 void EpollServer::acceptNewClient() {//调回调函数，确定fd对应的业务逻辑
-	int client_fd = accept(listen_fd_, nullptr, nullptr);
+	while (true) {
+		int client_fd = accept(listen_fd_, nullptr, nullptr);
 
-	if (client_fd < 0) {
-		LOG_ERROR("accept failed: %s", strerror(errno));
-		return;
+		if (client_fd < 0) {
+			//和发送的时候的三态处理类似
+			if (errno == EINTR)	continue;//被信号打断，重试
+			if (errno == EAGAIN || errno == EWOULDBLOCK)	break;//接完了，退出
+			LOG_ERROR("accept failed: %s", strerror(errno));//出错
+			return;
+		}
+		{
+			//维护客户连接
+			lock_guard<mutex> clmtx(client_mutex);
+			int flag = fcntl(client_fd, F_GETFL, 0);
+			fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//设置客户非阻塞，为了处理在send时候的阻塞问题
+			fd_list.insert({ client_fd,Connection(client_fd) });
+		}
+		LOG_DEBUG("new client fd=%d", client_fd);
+		epoll_event nev;
+		nev.data.fd = client_fd;
+		nev.events = EPOLLIN | EPOLLONESHOT;
+		epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);
 	}
-	{
-		//维护客户连接
-		lock_guard<mutex> clmtx(client_mutex);
-		int flag = fcntl(client_fd, F_GETFL, 0);
-		fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//设置客户非阻塞，为了处理在send时候的阻塞问题
-		fd_list.insert({ client_fd,Connection(client_fd) });
-	}
-	LOG_DEBUG("new client fd=%d", client_fd);
-	epoll_event nev;
-	nev.data.fd = client_fd;
-	nev.events = EPOLLIN | EPOLLONESHOT;
-	epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);
-
+	
 	epoll_event nev1;
 	nev1.data.fd = listen_fd_;
 	nev1.events = EPOLLIN | EPOLLONESHOT;

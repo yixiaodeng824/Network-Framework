@@ -186,6 +186,24 @@ def print_round(clients, stats, total):
         clients, rate_str, stats.ok_req, total, qps, avg_ms, max_ms, stats.refused)
 
 
+
+def append_to_csv(rows, messages, payload_size):
+    """把这一轮压测结果追加到 benchmark_log.csv(首次自动写表头)"""
+    import csv
+    import os
+    path = 'benchmark_log.csv'
+    new_file = not os.path.exists(path)
+    with open(path, 'a', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        if new_file:
+            writer.writerow(['时间', '并发', '成功率%', '成功请求', '总耗时(s)',
+                             'QPS', '平均延迟(ms)', '最大延迟(ms)', '被拒',
+                             '消息/连接', '消息体(字节)'])
+        now = time.strftime('%Y-%m-%d %H:%M:%S')
+        for r in rows:
+            writer.writerow([now] + list(r) + [messages, payload_size])
+
+
 def main():
     parser = argparse.ArgumentParser(description="服务器并发压测脚本")
     parser.add_argument("--host", default="192.168.159.128", help="服务器 IP,默认 192.168.159.128")
@@ -222,12 +240,22 @@ def main():
     print("服务器: %s:%d\n" % (args.host, args.port))
 
     rows = []
+    raw_rows = []
     for clients in levels:
         print("========== 并发 %d ==========" % clients)
         stats, total = run_round(args.host, args.port, clients,
                                  args.messages, args.payload_size, args.timeout)
         row = print_round(clients, stats, total)
         rows.append(row)
+        # 收集原始数值,供写 CSV
+        conn_total = (stats.ok_conn + stats.refused +
+                      stats.conn_timeout + stats.conn_other)
+        ok_rate = stats.ok_conn * 100.0 / conn_total if conn_total else 0.0
+        qps = stats.ok_req / total if total > 0 else 0.0
+        avg_ms = stats.latency_sum / stats.ok_req * 1000.0 if stats.ok_req else 0.0
+        max_ms = stats.latency_max * 1000.0
+        raw_rows.append((clients, ok_rate, stats.ok_req, total,
+                         qps, avg_ms, max_ms, stats.refused))
         print()
 
     print("================== 汇总对比 ==================")
@@ -236,6 +264,10 @@ def main():
         "平均延迟(ms)", "最大延迟(ms)", "被拒"))
     for row in rows:
         print(row)
+
+    # 记录本次压测数据
+    append_to_csv(raw_rows, args.messages, args.payload_size)
+    print("\n已记录到 benchmark_log.csv")
 
 
 if __name__ == '__main__':

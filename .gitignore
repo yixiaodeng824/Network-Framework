@@ -26,3 +26,6 @@ __pycache__/
 # 个人学习笔记(不入库)
 network_notes.md
 docs/
+
+# 压测数据台账(不入库)
+benchmark_log.csv
