@@ -91,17 +91,19 @@ TCP 是字节流,本身没有"消息"边界——一次 `recv` 可能只读到半条,也可能一次读到好几
 
 ## 编译与运行
 
-Linux 下,在项目根目录执行 `build.sh`(已写好编译命令),产物是 `server.out`:
+在 Linux 下安装好 cmake，通过 `cmake --version` 验证安装。
+
+在项目根目录执行 `build.sh` 编译，产物是 `build/server`。
+
+通过如下命令运行：
 
 ```bash
 ./build.sh
-./server.out                 # 默认端口 8888
-./server.out -p 9090         # 换端口
-./server.out -t 4            # 指定线程数(默认 0 = 自动用 CPU 核数)
-./server.out -h 30           # 心跳超时(秒,默认 60)
+./run.sh          # 默认端口 8888
+./run.sh -p 9090  # 换端口
+./run.sh -t 4     # 指定线程数(默认 0 = 自动用 CPU 核数)
+./run.sh -h 30    # 心跳超时(秒,默认 60), 不是 help
 ```
-
-> ?? 注意:`-h` 是 **heartbeats(心跳超时)**,不是 help。
 
 ## 测试
 

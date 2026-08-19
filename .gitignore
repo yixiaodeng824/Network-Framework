@@ -18,6 +18,7 @@ x64/
 Debug/
 Release/
 *.out
+build/
 
 # 编译中间文件
 *.obj
