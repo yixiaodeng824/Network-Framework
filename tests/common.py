@@ -20,6 +20,13 @@ def connect(timeout=None) -> socket.socket:
     return socket.create_connection((HOST, PORT), timeout=timeout)
 
 
+def start_server(binary: str, *args: str) -> subprocess.Popen:
+    """启动服务器并等待其开始监听"""
+    process = subprocess.Popen([binary, *args])
+    wait_for_server(process)
+    return process
+
+
 def wait_for_server(process: subprocess.Popen, timeout: float = 5.0):
     """等待服务器开始监听。"""
     deadline = time.monotonic() + timeout
