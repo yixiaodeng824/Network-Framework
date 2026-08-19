@@ -5,7 +5,6 @@
 using namespace std;
 
 int main(int argc,char* argv[]) {
-	logger::setLogLevel(logger::LOG_LEVEL_ERROR);
 	int port = 8888;
 	int threadnum = 0;
 	int heartbeats = 60;
