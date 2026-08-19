@@ -51,6 +51,9 @@
     <ClInclude Include="src\thread\ThreadPool.h" />
     <ClInclude Include="src\thread\work_thread.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="logger.conf" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{5e5f1480-a719-4829-ab93-6f29beddef28}</ProjectGuid>
     <Keyword>Linux</Keyword>

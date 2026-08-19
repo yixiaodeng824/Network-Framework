@@ -12,7 +12,7 @@
 #  用法:
 #     1) 启动服务器: cd ~/projects/for_linux && ./server.out <端口>
 #     2) 运行压测:
-#        python stress_test.py --host 127.0.0.1 --port 8888
+#        python stress_test.py --host 192.168.159.128 --port 8888
 #        python stress_test.py --clients 100,500,1000 --messages 50
 #
 #  默认依次用 100 / 500 / 1000 个客户端同时连上,
@@ -145,16 +145,16 @@ def run_round(host, port, clients, messages, payload_size, timeout):
     barrier.wait()
     t_start = time.perf_counter()
 
-    # 等待全部结束,期间每 2 秒打印一次进度(避免大并发时像卡住)
-    last_done = 0
+    # 等待全部线程结束,期间每 10% 打印一次进度(防止大并发卡住)
+    last_reported = 0
     while True:
         done = sum(1 for t in threads if not t.is_alive())
         if done == clients:
             break
-        if done > last_done:
+        if done - last_reported >= max(1, clients // 10):
             print("    已完成 %d/%d 客户端..." % (done, clients), flush=True)
-            last_done = done
-        time.sleep(1)
+            last_reported = done
+        time.sleep(0.05)
 
     for t in threads:
         t.join()
@@ -188,7 +188,7 @@ def print_round(clients, stats, total):
 
 def main():
     parser = argparse.ArgumentParser(description="服务器并发压测脚本")
-    parser.add_argument("--host", default="127.0.0.1", help="服务器 IP,默认 127.0.0.1")
+    parser.add_argument("--host", default="192.168.159.128", help="服务器 IP,默认 192.168.159.128")
     parser.add_argument("--port", type=int, default=8888, help="服务器端口,默认 8888")
     parser.add_argument("--clients", default="100,500,1000",
                         help="并发数,逗号分隔,默认 100,500,1000")

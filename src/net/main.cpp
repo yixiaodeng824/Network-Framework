@@ -5,7 +5,7 @@
 using namespace std;
 
 int main(int argc,char* argv[]) {
-	logger::setLogLevel(logger::LOG_LEVEL_DEBUG);
+	logger::setLogLevel(logger::LOG_LEVEL_ERROR);
 	int port = 8888;
 	int threadnum = 0;
 	int heartbeats = 60;
@@ -41,7 +41,7 @@ int main(int argc,char* argv[]) {
 	ThreadPool tp(threadnum);
 	EpollServer es(port, tp,heartbeats);
 	es.setMessageHandler([](EpollServer& server, int fd, const std::string& msg) {
-		server.broadcast(fd,msg);
+		server.sendTo(fd,msg);
 		});
 	es.start();
 	return 0;

@@ -17,4 +17,7 @@
     <ClInclude Include="src\thread\work_thread.h" />
     <ClInclude Include="src\net\connection.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="logger.conf" />
+  </ItemGroup>
 </Project>
