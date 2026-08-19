@@ -1,11 +1,14 @@
-# Visual Studio ä¸´æ—¶æ–‡ä»¶
+# Visual Studio ÁÙÊ±ÎÄ¼ş
 .vs/
 *.user
 *.suo
 *.vcxproj.*
 *.sln
 
-# ç¼–è¯‘äº§ç‰©
+# vscode ÁÙÊ±ÎÄ¼ş
+.vscode/
+
+# ±àÒë²úÎï
 bin/
 lib/
 obj/
@@ -16,16 +19,16 @@ Debug/
 Release/
 *.out
 
-# ç¼–è¯‘ä¸­é—´æ–‡ä»¶
+# ±àÒëÖĞ¼äÎÄ¼ş
 *.obj
 *.pdb
 *.ilk
 *.log
 
-# Python ç¼“å­˜
+# Python »º´æ
 __pycache__/
 *.pyc
 
-# ä¸ªäººå­¦ä¹ ç¬”è®°(ä¸å…¥åº“)
+# ¸öÈËÑ§Ï°±Ê¼Ç(²»Èë¿â)
 network_notes.md
 docs/
