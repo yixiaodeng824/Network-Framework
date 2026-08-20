@@ -2,6 +2,7 @@
 #include <string>
 #include <ctime>
 #include <vector>
+#include <cstdint>
 enum class SendResult {
 	SentAll,    // 发完了
 	Pending,    // 没发完,等 EPOLLOUT 续发
@@ -28,6 +29,9 @@ public:
 	bool isTimeout(time_t now, int sec)const { return now - last_active_ >= sec; }//计算是否超时
 	bool hasFrameError()const { return frame_error_; }
 	bool hasSendError()const { return send_overflow; }
+    // public 区加两个函数(放在 hasSendError 下面):
+    uint64_t generation() const { return generation_; } // 查自己的代际
+    void setGeneration(uint64_t g) { generation_ = g; } // 发牌时写入代际
 private:
 	int fd_;
 	std::string recv_buffer_;
@@ -41,4 +45,5 @@ private:
 	int send_idx_{ 0 };
 	bool frame_error_{ false };   // 收到超长长度头,协议错误,该关连接
 	bool send_overflow{ false };
+    uint64_t generation_{0};//代际号，每个connection唯一，用来解决某fd退出时队列任务未被处理，新fd复用之后数据混乱问题
 };

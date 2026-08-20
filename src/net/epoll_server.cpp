@@ -92,11 +92,12 @@ void EpollServer::run() {
 					acceptNewClient();
 				continue;
 			}
-			if(ev & (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
-				handleClient(fd);
+            ConnectionId id = makeId(fd);
+            if(ev & (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+				handleClient(id);
 			}
 			if (ev & EPOLLOUT) {
-				handleWrite(fd);
+				handleWrite(id);
 			}
 			
 		}
@@ -128,17 +129,26 @@ void EpollServer::handle_signal(int) {
 	stop_ = true;
 }
 
-void  EpollServer::handleClient(int fd) {
-	pool_.post([this, fd] {
-		char buf[1024];
-		int len = recv(fd, buf, sizeof(buf), 0);
+void  EpollServer::handleClient(ConnectionId id) {
+	pool_.post([this, id] {
+        int fd = id.fd;
+        //待际不对直接退出
+        {
+            lock_guard<mutex> lck(client_mutex);
+            auto it = fd_list.find(fd);
+            if(it==fd_list.end()||it->second.generation()!=id.generation)
+                return;
+        }
+        char buf[1024];
+        int len = recv(fd, buf, sizeof(buf), 0);
 		if (len == 0) {//关闭fd，可能fd对应的缓冲区仍然有东西，需要全发完再关
 			SendResult result;
 			{
 				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
-				if (it == fd_list.end())	return;
-				it->second.markClosing();
+                if (it == fd_list.end() || it->second.generation() != id.generation)
+                    return;
+                it->second.markClosing();
 				result = it->second.sendReadyMessage();
 			}
 			epoll_event nev;
@@ -161,8 +171,9 @@ void  EpollServer::handleClient(int fd) {
 			{
 				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
-				if (it == fd_list.end())	return;
-				it->second.appendRecv(buf, len);
+                if (it == fd_list.end() || it->second.generation() != id.generation)
+                    return;
+                it->second.appendRecv(buf, len);
 				it->second.touchActive();//刷新一下活跃时间
 				msgs = move(it->second.processBufferedData());
 				frame_error = it->second.hasFrameError();
@@ -212,15 +223,23 @@ void  EpollServer::handleClient(int fd) {
 	});
 }
 
-void EpollServer::handleWrite(int fd) {
-	pool_.post([this, fd] {
-		SendResult result;
+void EpollServer::handleWrite(ConnectionId id) {
+	pool_.post([this, id] {
+        int fd=id.fd;
+        {
+            lock_guard<mutex> lck(client_mutex);
+            auto it = fd_list.find(fd);
+            if (it == fd_list.end() || it->second.generation() != id.generation)
+                return;
+        }
+        SendResult result;
 		bool closing = false;
 		{
 			lock_guard<mutex> lck(client_mutex);
 			auto it = fd_list.find(fd);
-			if (it == fd_list.end()) return;
-			result = it->second.sendReadyMessage();
+            if (it == fd_list.end() || it->second.generation() != id.generation)
+                return;
+            result = it->second.sendReadyMessage();
 			closing = it->second.isClosing();
 		}
 		epoll_event nev;
@@ -259,6 +278,15 @@ void EpollServer::closeConnection(int fd) {
 	close(fd);
 }
 
+ConnectionId EpollServer::makeId(int fd){
+    lock_guard<mutex> lck(client_mutex);
+    auto it = fd_list.find(fd);
+    if(it!=fd_list.end()){
+        return {fd, it->second.generation()};
+    }
+    return {fd, 0};
+}
+
 void EpollServer::acceptNewClient() {//调回调函数，确定fd对应的业务逻辑
 	while (true) {
 		int client_fd = accept(listen_fd_, nullptr, nullptr);
@@ -275,7 +303,12 @@ void EpollServer::acceptNewClient() {//调回调函数，确定fd对应的业务逻辑
 			lock_guard<mutex> clmtx(client_mutex);
 			int flag = fcntl(client_fd, F_GETFL, 0);
 			fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//设置客户非阻塞，为了处理在send时候的阻塞问题
-			fd_list.insert({ client_fd,Connection(client_fd) });
+
+            Connection conn(client_fd);
+            conn.setGeneration(next_generation_.fetch_add(1));
+            fd_list.insert({client_fd, move(conn)});
+
+            //fd_list.insert({ client_fd,Connection(client_fd) });
 		}
 		LOG_DEBUG("new client fd=%d", client_fd);
 		epoll_event nev;

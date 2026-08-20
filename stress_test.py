@@ -198,10 +198,10 @@ def append_to_csv(rows, messages, payload_size):
         if new_file:
             writer.writerow(['时间', '并发', '成功率%', '成功请求', '总耗时(s)',
                              'QPS', '平均延迟(ms)', '最大延迟(ms)', '被拒',
-                             '消息/连接', '消息体(字节)'])
+                             '消息/连接', '消息体(字节)', 'p50(ms)', 'p95(ms)', 'p99(ms)'])
         now = time.strftime('%Y-%m-%d %H:%M:%S')
         for r in rows:
-            writer.writerow([now] + list(r) + [messages, payload_size])
+            writer.writerow([now] + list(r) + [messages, payload_size] + ['', '', ''])
 
 
 def main():
