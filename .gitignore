@@ -1,9 +1,14 @@
-# Visual Studio 涓存椂鏂囦欢
+# Visual Studio 临时文件
 .vs/
 *.user
 *.suo
+*.vcxproj.*
+*.sln
 
-# 缂栬瘧浜х墿
+# vscode 临时文件
+.vscode/
+
+# 编译产物
 bin/
 lib/
 obj/
@@ -12,13 +17,18 @@ obj_linux/
 x64/
 Debug/
 Release/
+*.out
 
-# 缂栬瘧涓棿鏂囦欢
+# 编译中间文件
 *.obj
 *.pdb
 *.ilk
 *.log
 
-# Python 缂撳瓨
+# Python 缓存
 __pycache__/
 *.pyc
+
+# 个人学习笔记(不入库)
+network_notes.md
+docs/
