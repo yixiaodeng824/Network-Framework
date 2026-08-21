@@ -5,7 +5,7 @@ MessageQueue::MessageQueue(size_t capacity) : capacity_(capacity) {}
 void MessageQueue::push(Task task) {
 	{
 		std::unique_lock<std::mutex> lck(mtx_);
-		// ÓĞ½çÇÒÒÑÂúÊ±×èÈû;¶ÓÁĞÒ»µ©¹Ø±ÕÔò²»ÔÙµÈ´ı,Ö±½ÓÈë¶Ó(ÅÅ¿Õ½×¶Î±£Ö¤±»Ïû·Ñ)
+		// æœ‰ç•Œä¸”å·²æ»¡æ—¶é˜»å¡;é˜Ÿåˆ—ä¸€æ—¦å…³é—­åˆ™ä¸å†ç­‰å¾…,ç›´æ¥å…¥é˜Ÿ(æ’ç©ºé˜¶æ®µä¿è¯è¢«æ¶ˆè´¹)
 		while (capacity_ > 0 && m_tasks.size() >= capacity_ &&
 		       !m_closed.load(std::memory_order_relaxed)) {
 			m_cv.wait(lck);
@@ -19,10 +19,10 @@ bool MessageQueue::pushOverrunOldest(Task task) {
 	{
 		std::lock_guard<std::mutex> lck(mtx_);
 		if (m_closed.load(std::memory_order_relaxed)) {
-			return false; // ÒÑ¹Ø±Õ,ĞÂÏûÏ¢Ö±½Ó¶ªÆú
+			return false; // å·²å…³é—­,æ–°æ¶ˆæ¯ç›´æ¥ä¸¢å¼ƒ
 		}
 		if (capacity_ > 0 && m_tasks.size() >= capacity_) {
-			// ¶ÓÁĞÂú:¶ªÆú×î¾É,¸øĞÂÏûÏ¢ÌÚÎ»ÖÃ¡£ÓÀ²»×èÈû,±£Ö¤Éú²úÕß²»±»ÍÏ¿å
+			// é˜Ÿåˆ—æ»¡:ä¸¢å¼ƒæœ€æ—§,ç»™æ–°æ¶ˆæ¯è…¾ä½ç½®ã€‚æ°¸ä¸é˜»å¡,ä¿è¯ç”Ÿäº§è€…ä¸è¢«æ‹–å®
 			m_tasks.pop_front();
 			m_dropped.fetch_add(1, std::memory_order_relaxed);
 		}
@@ -38,12 +38,12 @@ bool MessageQueue::pop(Task& task) {
 		if (m_closed.load(std::memory_order_relaxed)) {
 			return false;
 		}
-		m_cv.wait(lck);//±ØĞëÓÃwhile£¬ÒòÎªcloseµÄnotifyall¼ÙÉè¶ÓÁĞÖ»ÓĞÒ»¸öÈÎÎñ£¬ËùÓĞÏß³ÌÍ¬Ê±±»»½ĞÑ£¬¶ÓÁĞÎª¿ÕÖ®ºóÈÔÈ»ÎŞÄÔpop
+		m_cv.wait(lck);//å¿…é¡»ç”¨whileï¼Œå› ä¸ºcloseçš„notifyallå‡è®¾é˜Ÿåˆ—åªæœ‰ä¸€ä¸ªä»»åŠ¡ï¼Œæ‰€æœ‰çº¿ç¨‹åŒæ—¶è¢«å”¤é†’ï¼Œé˜Ÿåˆ—ä¸ºç©ºä¹‹åä»ç„¶æ— è„‘pop
 	}
 	task = std::move(m_tasks.front());
 	m_tasks.pop_front();
 	if (capacity_ > 0) {
-		// ¿ÉÄÜÓĞÉú²úÕßÔÚ push ÀïÒò¶ÓÁĞÂú¶øµÈ´ı,ÌÚ³öÎ»ÖÃºó½ĞĞÑÒ»¸ö
+		// å¯èƒ½æœ‰ç”Ÿäº§è€…åœ¨ push é‡Œå› é˜Ÿåˆ—æ»¡è€Œç­‰å¾…,è…¾å‡ºä½ç½®åå«é†’ä¸€ä¸ª
 		m_cv.notify_one();
 	}
 	return true;

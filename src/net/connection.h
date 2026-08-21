@@ -3,14 +3,14 @@
 #include <ctime>
 #include <vector>
 enum class SendResult {
-	SentAll,    // ·¢ÍêÁË
-	Pending,    // Ã»·¢Íê,µÈ EPOLLOUT Ğø·¢
-	Error,      // Á¬½Ó³ö´í,¸Ã¶Ï¿ª
+	SentAll,    // å‘å®Œäº†
+	Pending,    // æ²¡å‘å®Œ,ç­‰ EPOLLOUT ç»­å‘
+	Error,      // è¿æ¥å‡ºé”™,è¯¥æ–­å¼€
 };
 
 class Connection {
 public:
-	// µ¥ÌõÏûÏ¢×î´ó 4MB:³¬¹ıÖ±½ÓÅĞĞ­Òé´íÎó¡£ÕæÊµÏîÄ¿°´ÒµÎñĞèÇóµ÷
+	// å•æ¡æ¶ˆæ¯æœ€å¤§ 4MB:è¶…è¿‡ç›´æ¥åˆ¤åè®®é”™è¯¯ã€‚çœŸå®é¡¹ç›®æŒ‰ä¸šåŠ¡éœ€æ±‚è°ƒ
 	static constexpr size_t kMaxFrameSize = 4 * 1024 * 1024;
 	static constexpr size_t kSendHighWaterMark = 1 * 1024 * 1024;
 	Connection() = default;
@@ -19,26 +19,26 @@ public:
 	void appendRecv(const char* data, size_t len) {
 		recv_buffer_.append(data, len);
 	}
-	std::vector<std::string> processBufferedData();//´¦ÀíÕ³°ü°ë°ü,·¢³ömsg
+	std::vector<std::string> processBufferedData();//å¤„ç†ç²˜åŒ…åŠåŒ…,å‘å‡ºmsg
 	void sendMsgToSendBuf(const std::string&);
 	SendResult sendReadyMessage();
-	void markClosing() { closing_ = true; }//±ê¼ÇÕıÔÚ¹Ø±Õ
-	bool isClosing()const { return closing_; }//ÅĞ¶ÏÊÇ·ñÕıÔÚ¹Ø±Õ
-	void touchActive(){ last_active_ = time(nullptr); }//ÊÕµ½Êı¾İ¾ÍË¢ĞÂ»î¶¯Ê±¼ä
-	bool isTimeout(time_t now, int sec)const { return now - last_active_ >= sec; }//¼ÆËãÊÇ·ñ³¬Ê±
+	void markClosing() { closing_ = true; }//æ ‡è®°æ­£åœ¨å…³é—­
+	bool isClosing()const { return closing_; }//åˆ¤æ–­æ˜¯å¦æ­£åœ¨å…³é—­
+	void touchActive(){ last_active_ = time(nullptr); }//æ”¶åˆ°æ•°æ®å°±åˆ·æ–°æ´»åŠ¨æ—¶é—´
+	bool isTimeout(time_t now, int sec)const { return now - last_active_ >= sec; }//è®¡ç®—æ˜¯å¦è¶…æ—¶
 	bool hasFrameError()const { return frame_error_; }
 	bool hasSendError()const { return send_overflow; }
 private:
 	int fd_;
 	std::string recv_buffer_;
 	std::string send_buffer_;
-	bool write_waiting_{false};//ÕâÀï²»ÄÜÊ¹ÓÃÔ­×ÓÀàĞÍ£¬ÒòÎªconnectionÀàĞèÒª½ømap£¬Òª½øĞĞ¸´ÖÆ
-	bool closing_{ false };//±íÊ¾ÕıÔÚ¹Ø±ÕÖĞ£¬µÈ´ı»º³åÅÅ¿ÕÔÙ¹Ø±Õ
-	time_t last_active_{ 0 };// ×îºóÊÕµ½Êı¾İµÄÊ±¼ä,ĞÄÌøÌßÈËÓÃ
+	bool write_waiting_{false};//è¿™é‡Œä¸èƒ½ä½¿ç”¨åŸå­ç±»å‹ï¼Œå› ä¸ºconnectionç±»éœ€è¦è¿›mapï¼Œè¦è¿›è¡Œå¤åˆ¶
+	bool closing_{ false };//è¡¨ç¤ºæ­£åœ¨å…³é—­ä¸­ï¼Œç­‰å¾…ç¼“å†²æ’ç©ºå†å…³é—­
+	time_t last_active_{ 0 };// æœ€åæ”¶åˆ°æ•°æ®çš„æ—¶é—´,å¿ƒè·³è¸¢äººç”¨
 
-//ÔÚĞŞ¸ÄÖ®ºó²»ÔÙ²ÉÓÃÃ¿´ÎÊÕµ½ÏûÏ¢Ö®ºó²ğ°üÒÆ³ıbuffer£¬Ê±¼ä¸´ÔÓ¶ÈÌ«¸ß,indexÃ¿´ÎÍùÇ°×ß£¬bufferÒ»µ©ÂúÁË1kbÇåÀíÒ»´Î
+//åœ¨ä¿®æ”¹ä¹‹åä¸å†é‡‡ç”¨æ¯æ¬¡æ”¶åˆ°æ¶ˆæ¯ä¹‹åæ‹†åŒ…ç§»é™¤bufferï¼Œæ—¶é—´å¤æ‚åº¦å¤ªé«˜,indexæ¯æ¬¡å¾€å‰èµ°ï¼Œbufferä¸€æ—¦æ»¡äº†1kbæ¸…ç†ä¸€æ¬¡
 	int recv_idx_{ 0 };
 	int send_idx_{ 0 };
-	bool frame_error_{ false };   // ÊÕµ½³¬³¤³¤¶ÈÍ·,Ğ­Òé´íÎó,¸Ã¹ØÁ¬½Ó
+	bool frame_error_{ false };   // æ”¶åˆ°è¶…é•¿é•¿åº¦å¤´,åè®®é”™è¯¯,è¯¥å…³è¿æ¥
 	bool send_overflow{ false };
 };

@@ -11,25 +11,25 @@ class MessageQueue
 public:
 	using Task = std::function<void()>;
 
-	// capacity == 0 ±íÊ¾ÎŞÉÏÏŞ(Ïß³Ì³ØµÈ³¡¾°±£³ÖÔ­ĞĞÎª);
-	// capacity > 0 ±íÊ¾ÓĞ½ç¶ÓÁĞ,ÂúÊ±µÄĞĞÎªÓÉ push / pushOverrunOldest ¾ö¶¨
+	// capacity == 0 è¡¨ç¤ºæ— ä¸Šé™(çº¿ç¨‹æ± ç­‰åœºæ™¯ä¿æŒåŸè¡Œä¸º);
+	// capacity > 0 è¡¨ç¤ºæœ‰ç•Œé˜Ÿåˆ—,æ»¡æ—¶çš„è¡Œä¸ºç”± push / pushOverrunOldest å†³å®š
 	explicit MessageQueue(size_t capacity = 0);
 
-	void push(Task task);            // Éú²úÕß:ÈûÒ»¸ö»Øµ÷½øÈ¥;ÓĞ½çÇÒÒÑÂúÊ±×èÈûµÈ´ı(pop ÌÚ³ö¿Õ¼ä)
-	bool pushOverrunOldest(Task task); // Éú²úÕß:ÓÀ²»×èÈû;ÓĞ½çÇÒÒÑÂúÊ±¶ªÆú×î¾ÉÏûÏ¢ÔÙÈë¶Ó;
-	                                   //         ¶ÓÁĞÒÑ¹Ø±ÕÊ±Ö±½Ó¶ªÆú²¢·µ»Ø false
-	bool pop(Task& task);            // Ïû·ÑÕß:×èÈûµÈÈÎÎñ,È¡³ö¡útrue;±»¹Ø±ÕÇÒ¿Õ¡úfalse
-	bool tryPop(Task& task);         // Ïû·ÑÕß:·Ç×èÈûÈ¡,¿Õ»òÒÑ¹Ø±Õ¡úfalse
-	void close();                    // »½ĞÑËùÓĞÕıÔÚ pop µÈ´ıµÄÏß³Ì,ÅÅ¿ÕºóÍË³öÈÎÎñ
-	size_t size() const;             // µ±Ç°¶ÓÁĞÉî¶È
-	size_t droppedCount() const;     // ÒòÈİÁ¿Âú±»¶ªÆú(¶ª×î¾É)µÄÏûÏ¢×ÜÊı
+	void push(Task task);            // ç”Ÿäº§è€…:å¡ä¸€ä¸ªå›è°ƒè¿›å»;æœ‰ç•Œä¸”å·²æ»¡æ—¶é˜»å¡ç­‰å¾…(pop è…¾å‡ºç©ºé—´)
+	bool pushOverrunOldest(Task task); // ç”Ÿäº§è€…:æ°¸ä¸é˜»å¡;æœ‰ç•Œä¸”å·²æ»¡æ—¶ä¸¢å¼ƒæœ€æ—§æ¶ˆæ¯å†å…¥é˜Ÿ;
+	                                   //         é˜Ÿåˆ—å·²å…³é—­æ—¶ç›´æ¥ä¸¢å¼ƒå¹¶è¿”å› false
+	bool pop(Task& task);            // æ¶ˆè´¹è€…:é˜»å¡ç­‰ä»»åŠ¡,å–å‡ºâ†’true;è¢«å…³é—­ä¸”ç©ºâ†’false
+	bool tryPop(Task& task);         // æ¶ˆè´¹è€…:éé˜»å¡å–,ç©ºæˆ–å·²å…³é—­â†’false
+	void close();                    // å”¤é†’æ‰€æœ‰æ­£åœ¨ pop ç­‰å¾…çš„çº¿ç¨‹,æ’ç©ºåé€€å‡ºä»»åŠ¡
+	size_t size() const;             // å½“å‰é˜Ÿåˆ—æ·±åº¦
+	size_t droppedCount() const;     // å› å®¹é‡æ»¡è¢«ä¸¢å¼ƒ(ä¸¢æœ€æ—§)çš„æ¶ˆæ¯æ€»æ•°
 
 private:
-	mutable std::mutex mtx_;//¶ÓÁĞËø
-	std::condition_variable m_cv;            // Í¨Öª #2:½ĞĞÑË¯¾õµÄ worker
-	std::deque<Task> m_tasks;                // ±»±£»¤µÄ¹²ÏíÊı¾İ
+	mutable std::mutex mtx_;//é˜Ÿåˆ—é”
+	std::condition_variable m_cv;            // é€šçŸ¥ #2:å«é†’ç¡è§‰çš„ worker
+	std::deque<Task> m_tasks;                // è¢«ä¿æŠ¤çš„å…±äº«æ•°æ®
 	std::atomic<bool> m_closed{ false };
 	std::atomic<size_t> m_dropped{ 0 };
-	size_t capacity_;                        // 0 = ÎŞÉÏÏŞ
+	size_t capacity_;                        // 0 = æ— ä¸Šé™
 };
 

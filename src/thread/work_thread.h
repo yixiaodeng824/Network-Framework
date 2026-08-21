@@ -1,27 +1,27 @@
 #pragma once
-//×îµ×²ã¹¤×÷Ïß³Ì
+//æœ€åº•å±‚å·¥ä½œçº¿ç¨‹
   // work_thread.h
 #pragma once
 #include <thread>
 #include <atomic>
-//±¾ÀàÖ»¸ºÔğ´¦Àí¹¤×÷£¬ËùÓĞ·Ö·¢¹¤×÷ÓÉ¶ÓÁĞ½øĞĞ
+//æœ¬ç±»åªè´Ÿè´£å¤„ç†å·¥ä½œï¼Œæ‰€æœ‰åˆ†å‘å·¥ä½œç”±é˜Ÿåˆ—è¿›è¡Œ
 #include <functional>
 #include "MessageQueue.h"
-class MessageQueue;   // Ç°ÖÃÉùÃ÷:Ö»ÒÀÀµ¶ÓÁĞµÄ½Ó¿Ú,²»ÒÀÀµÊµÏÖ
+class MessageQueue;   // å‰ç½®å£°æ˜:åªä¾èµ–é˜Ÿåˆ—çš„æ¥å£,ä¸ä¾èµ–å®ç°
 
 class WorkThread {
 public:
-    explicit WorkThread(MessageQueue* queue);  // ¹¹Ôì¼´Æô¶¯Ïß³Ì
-    ~WorkThread();                             // ÇëÇóÍ£Ö¹²¢ join
+    explicit WorkThread(MessageQueue* queue);  // æ„é€ å³å¯åŠ¨çº¿ç¨‹
+    ~WorkThread();                             // è¯·æ±‚åœæ­¢å¹¶ join
 
-    // std::thread ²»¿É¿½±´,ËùÒÔÕâÀàÒ²Òª½ûµô¿½±´,·ñÔò±àÒë±¨´í
+    // std::thread ä¸å¯æ‹·è´,æ‰€ä»¥è¿™ç±»ä¹Ÿè¦ç¦æ‰æ‹·è´,å¦åˆ™ç¼–è¯‘æŠ¥é”™
     WorkThread(const WorkThread&) = delete;
     WorkThread& operator=(const WorkThread&) = delete;
-    void join();   // µÈ´ıÏß³Ì½áÊø
+    void join();   // ç­‰å¾…çº¿ç¨‹ç»“æŸ
 
 private:
-    void run();                 // Ïß³ÌÈë¿Ú
-    MessageQueue* m_queue; // ÈÎÎñÀ´Ô´
+    void run();                 // çº¿ç¨‹å…¥å£
+    MessageQueue* m_queue; // ä»»åŠ¡æ¥æº
     std::thread        m_thread;
 };
 

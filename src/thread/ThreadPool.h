@@ -13,21 +13,21 @@ public:
 	~ThreadPool();
 
     template<typename Func>
-    auto submit(Func&& f) -> std::future<decltype(f())> {//¼Óµ×ÏÂÒ»ÛçÖ÷ÒªÊÇ¿¼ÂÇÖ®ºóº¯Êı»áÓĞ·µ»ØÖµµÄÇé¿ö
+    auto submit(Func&& f) -> std::future<decltype(f())> {//åŠ åº•ä¸‹ä¸€å¨ä¸»è¦æ˜¯è€ƒè™‘ä¹‹åå‡½æ•°ä¼šæœ‰è¿”å›å€¼çš„æƒ…å†µ
         using Ret = decltype(f());
-        auto prom = std::make_shared<std::promise<Ret>>();//prom±¾ÖÊÊÇ²»¿É¸´ÖÆµÄ£¬µ«ÊÇÈç¹ûÓÃfunction£¬Ëû»áÇ¿ÖÆÒªÇóÄÚ²¿¶«Î÷¿ÉÒÔ¸´ÖÆ
+        auto prom = std::make_shared<std::promise<Ret>>();//promæœ¬è´¨æ˜¯ä¸å¯å¤åˆ¶çš„ï¼Œä½†æ˜¯å¦‚æœç”¨functionï¼Œä»–ä¼šå¼ºåˆ¶è¦æ±‚å†…éƒ¨ä¸œè¥¿å¯ä»¥å¤åˆ¶
         std::future<Ret> fut = prom->get_future();
 
         msg_que_.push(
             [prom, f = std::forward<Func>(f)]() mutable {
-                    prom->set_value(f());        // ÈÎÎñÓĞ½á¹û:Ë³ÊÖ°Ñ½á¹û´øÉÏ
+                    prom->set_value(f());        // ä»»åŠ¡æœ‰ç»“æœ:é¡ºæ‰‹æŠŠç»“æœå¸¦ä¸Š
             }
         );
         return fut;
     }
     template<typename Func>
     void post(Func&& f) {
-        msg_que_.push([f = std::forward<Func>(f)]()mutable {f(); });//ÔÊĞí²¶»ñÖ®ºóĞŞ¸Ä×Ô¼ºµÄ±äÁ¿
+        msg_que_.push([f = std::forward<Func>(f)]()mutable {f(); });//å…è®¸æ•è·ä¹‹åä¿®æ”¹è‡ªå·±çš„å˜é‡
     }
     void close();
 private:

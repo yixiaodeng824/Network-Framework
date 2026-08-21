@@ -8,7 +8,7 @@
 #include <ctime>
 #include <functional>
 
-//ÓÉÓÚ²»ÖªµÀÏûÏ¢ÓĞ¶à³¤£¬ÔÚÃ¿ÌõÏûÏ¢Ç°Ãæ¼ÓËÄ¸ö×Ö½ÚµÄ³¤¶È±íÊ¾ÏûÏ¢ÌåµÄ³¤¶È
+//ç”±äºä¸çŸ¥é“æ¶ˆæ¯æœ‰å¤šé•¿ï¼Œåœ¨æ¯æ¡æ¶ˆæ¯å‰é¢åŠ å››ä¸ªå­—èŠ‚çš„é•¿åº¦è¡¨ç¤ºæ¶ˆæ¯ä½“çš„é•¿åº¦
 class EpollServer {
 public:
 	EpollServer(int port, ThreadPool& pool,int heartbeat_timeout);
@@ -26,7 +26,7 @@ private:
 	void handleWrite(int fd);
 	void closeConnection(int fd);
 	void heartBeatCheck();
-	int port_;//¶Ë¿ÚºÅ
+	int port_;//ç«¯å£å·
 	int listen_fd_;
 	int epfd_;
 	static std::atomic<bool> stop_;

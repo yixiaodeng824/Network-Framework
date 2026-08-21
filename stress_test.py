@@ -1,22 +1,22 @@
 # -*- coding: gbk -*-
 # =====================================================
-#  stress_test.py - ·şÎñÆ÷²¢·¢Ñ¹²â½Å±¾
+#  stress_test.py - æœåŠ¡å™¨å¹¶å‘å‹æµ‹è„šæœ¬
 #
-#  Ä¿±ê:Ñ¹²â·şÎñÆ÷µÄ²¢·¢±íÏÖ,Í³¼ÆÁ¬½Ó³É¹¦ÂÊ¡¢ÇëÇóÊı¡¢
-#        QPS¡¢Æ½¾ù/×î´óÑÓ³Ù¡¢Á¬½Ó±»¾ÜÇé¿ö¡£
+#  ç›®æ ‡:å‹æµ‹æœåŠ¡å™¨çš„å¹¶å‘è¡¨ç°,ç»Ÿè®¡è¿æ¥æˆåŠŸç‡ã€è¯·æ±‚æ•°ã€
+#        QPSã€å¹³å‡/æœ€å¤§å»¶è¿Ÿã€è¿æ¥è¢«æ‹’æƒ…å†µã€‚
 #
-#  Ğ­Òé(Óë test.py Ò»ÖÂ,ÒÑ´æÔÚ,Ö±½ÓÓÃ):
-#     Ã¿ÌõÏûÏ¢ = 4 ×Ö½Ú³¤¶È(ÍøÂç×Ö½ÚĞò/´ó¶Ë) + ÏûÏ¢Ìå
-#     ·şÎñÆ÷ÊÕµ½ºó°ÑÏûÏ¢Ô­Ñù»Ø´«(»ØÏÔ)
+#  åè®®(ä¸ test.py ä¸€è‡´,å·²å­˜åœ¨,ç›´æ¥ç”¨):
+#     æ¯æ¡æ¶ˆæ¯ = 4 å­—èŠ‚é•¿åº¦(ç½‘ç»œå­—èŠ‚åº/å¤§ç«¯) + æ¶ˆæ¯ä½“
+#     æœåŠ¡å™¨æ”¶åˆ°åæŠŠæ¶ˆæ¯åŸæ ·å›ä¼ (å›æ˜¾)
 #
-#  ÓÃ·¨:
-#     1) Æô¶¯·şÎñÆ÷: cd ~/projects/for_linux && ./server.out <¶Ë¿Ú>
-#     2) ÔËĞĞÑ¹²â:
+#  ç”¨æ³•:
+#     1) å¯åŠ¨æœåŠ¡å™¨: cd ~/projects/for_linux && ./server.out <ç«¯å£>
+#     2) è¿è¡Œå‹æµ‹:
 #        python stress_test.py --host 192.168.159.128 --port 8888
 #        python stress_test.py --clients 100,500,1000 --messages 50
 #
-#  Ä¬ÈÏÒÀ´ÎÓÃ 100 / 500 / 1000 ¸ö¿Í»§¶ËÍ¬Ê±Á¬ÉÏ,
-#  Ã¿¸ö¿Í»§¶ËÁ¬ÉÏºóÁ¬Ğø·¢ËÍ --messages ÌõÏûÏ¢¡£
+#  é»˜è®¤ä¾æ¬¡ç”¨ 100 / 500 / 1000 ä¸ªå®¢æˆ·ç«¯åŒæ—¶è¿ä¸Š,
+#  æ¯ä¸ªå®¢æˆ·ç«¯è¿ä¸Šåè¿ç»­å‘é€ --messages æ¡æ¶ˆæ¯ã€‚
 # =====================================================
 import argparse
 import socket
@@ -27,12 +27,12 @@ import time
 
 
 def build_msg(payload):
-    """×éÒ»ÌõÏûÏ¢: [4 ×Ö½Ú³¤¶È(´ó¶Ë)][ÏûÏ¢Ìå]"""
+    """ç»„ä¸€æ¡æ¶ˆæ¯: [4 å­—èŠ‚é•¿åº¦(å¤§ç«¯)][æ¶ˆæ¯ä½“]"""
     return struct.pack('>I', len(payload)) + payload
 
 
 def recv_one(sock):
-    """°´Ğ­Òé¶ÁÈ¡Ò»ÌõÍêÕûÏûÏ¢;Á¬½Ó±»¹Ø±Õ·µ»Ø None"""
+    """æŒ‰åè®®è¯»å–ä¸€æ¡å®Œæ•´æ¶ˆæ¯;è¿æ¥è¢«å…³é—­è¿”å› None"""
     header = b''
     while len(header) < 4:
         chunk = sock.recv(4 - len(header))
@@ -50,19 +50,19 @@ def recv_one(sock):
 
 
 class RoundStats(object):
-    """Ò»ÂÖÑ¹²âµÄÍ³¼Æ½á¹û(¶àÏß³Ì¹²Ïí,ÄÚ²¿¼ÓËø)"""
+    """ä¸€è½®å‹æµ‹çš„ç»Ÿè®¡ç»“æœ(å¤šçº¿ç¨‹å…±äº«,å†…éƒ¨åŠ é”)"""
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.ok_conn = 0       # Á¬½Ó³É¹¦Êı
-        self.refused = 0       # Á¬½Ó±»¾ÜÊı
-        self.conn_timeout = 0  # Á¬½Ó³¬Ê±Êı
-        self.conn_other = 0    # ÆäËûÁ¬½ÓÊ§°ÜÊı
-        self.attempted = 0     # ³¢ÊÔ·¢ËÍµÄÇëÇó×ÜÊı
-        self.ok_req = 0        # »ØÏÔÕıÈ·µÄÇëÇóÊı
-        self.fail_req = 0      # Ê§°ÜÇëÇóÊı(»ØÏÔ´íÎó/¶Ï¿ª/³¬Ê±)
-        self.latency_sum = 0.0  # ³É¹¦ÇëÇóÑÓ³Ù×ÜºÍ(Ãë)
-        self.latency_max = 0.0  # ³É¹¦ÇëÇó×î´óÑÓ³Ù(Ãë)
+        self.ok_conn = 0       # è¿æ¥æˆåŠŸæ•°
+        self.refused = 0       # è¿æ¥è¢«æ‹’æ•°
+        self.conn_timeout = 0  # è¿æ¥è¶…æ—¶æ•°
+        self.conn_other = 0    # å…¶ä»–è¿æ¥å¤±è´¥æ•°
+        self.attempted = 0     # å°è¯•å‘é€çš„è¯·æ±‚æ€»æ•°
+        self.ok_req = 0        # å›æ˜¾æ­£ç¡®çš„è¯·æ±‚æ•°
+        self.fail_req = 0      # å¤±è´¥è¯·æ±‚æ•°(å›æ˜¾é”™è¯¯/æ–­å¼€/è¶…æ—¶)
+        self.latency_sum = 0.0  # æˆåŠŸè¯·æ±‚å»¶è¿Ÿæ€»å’Œ(ç§’)
+        self.latency_max = 0.0  # æˆåŠŸè¯·æ±‚æœ€å¤§å»¶è¿Ÿ(ç§’)
 
     def add_ok_req(self, dt):
         with self.lock:
@@ -79,11 +79,11 @@ class RoundStats(object):
 
 
 def worker(host, port, payload, messages, timeout, stats, barrier):
-    """µ¥¸öÄ£Äâ¿Í»§¶Ë:Á¬ÉÏºóÁ¬Ğø·¢ messages ÌõÏûÏ¢²¢µÈ´ı»ØÏÔ"""
+    """å•ä¸ªæ¨¡æ‹Ÿå®¢æˆ·ç«¯:è¿ä¸Šåè¿ç»­å‘ messages æ¡æ¶ˆæ¯å¹¶ç­‰å¾…å›æ˜¾"""
     try:
         barrier.wait(timeout=120)
     except threading.BrokenBarrierError:
-        return  # Ïß³ÌÆô¶¯Ì«Âı(¼«ÉÙ·¢Éú),Ö±½Ó·ÅÆúÕâÒ»Â·
+        return  # çº¿ç¨‹å¯åŠ¨å¤ªæ…¢(æå°‘å‘ç”Ÿ),ç›´æ¥æ”¾å¼ƒè¿™ä¸€è·¯
 
     try:
         sock = socket.create_connection((host, port), timeout=timeout)
@@ -110,28 +110,28 @@ def worker(host, port, payload, messages, timeout, stats, barrier):
                 sock.sendall(build_msg(payload))
                 body = recv_one(sock)
             except socket.timeout:
-                stats.add_fail_req()  # ¶Á»ØÏÔ³¬Ê±
+                stats.add_fail_req()  # è¯»å›æ˜¾è¶…æ—¶
                 break
             except OSError:
-                stats.add_fail_req()  # Á¬½ÓÖĞÍ¾¶Ï¿ª
+                stats.add_fail_req()  # è¿æ¥ä¸­é€”æ–­å¼€
                 break
             dt = time.perf_counter() - t0
             if body is None:
-                stats.add_fail_req()  # ·şÎñÆ÷ÌáÇ°¹Ø±ÕÁ¬½Ó
+                stats.add_fail_req()  # æœåŠ¡å™¨æå‰å…³é—­è¿æ¥
                 break
             if body == payload:
                 stats.add_ok_req(dt)
             else:
-                stats.add_fail_req()  # »ØÏÔÄÚÈİ²»¶Ô
+                stats.add_fail_req()  # å›æ˜¾å†…å®¹ä¸å¯¹
     finally:
         sock.close()
 
 
 def run_round(host, port, clients, messages, payload_size, timeout):
-    """ÅÜÒ»ÂÖÖ¸¶¨²¢·¢ÊıµÄÑ¹²â,·µ»Ø (Í³¼Æ½á¹û, ×ÜºÄÊ±ÃëÊı)"""
+    """è·‘ä¸€è½®æŒ‡å®šå¹¶å‘æ•°çš„å‹æµ‹,è¿”å› (ç»Ÿè®¡ç»“æœ, æ€»è€—æ—¶ç§’æ•°)"""
     payload = b'P' * payload_size
     stats = RoundStats()
-    # ËùÓĞ¿Í»§¶ËÏß³Ì + Ö÷Ïß³ÌÒ»ÆğµÈ barrier,±£Ö¤"Í¬Ê±"¿ªÊ¼Á¬½Ó
+    # æ‰€æœ‰å®¢æˆ·ç«¯çº¿ç¨‹ + ä¸»çº¿ç¨‹ä¸€èµ·ç­‰ barrier,ä¿è¯"åŒæ—¶"å¼€å§‹è¿æ¥
     barrier = threading.Barrier(clients + 1)
     threads = []
     for _ in range(clients):
@@ -145,14 +145,14 @@ def run_round(host, port, clients, messages, payload_size, timeout):
     barrier.wait()
     t_start = time.perf_counter()
 
-    # µÈ´ıÈ«²¿Ïß³Ì½áÊø,ÆÚ¼äÃ¿ 10% ´òÓ¡Ò»´Î½ø¶È(·ÀÖ¹´ó²¢·¢¿¨×¡)
+    # ç­‰å¾…å…¨éƒ¨çº¿ç¨‹ç»“æŸ,æœŸé—´æ¯ 10% æ‰“å°ä¸€æ¬¡è¿›åº¦(é˜²æ­¢å¤§å¹¶å‘å¡ä½)
     last_reported = 0
     while True:
         done = sum(1 for t in threads if not t.is_alive())
         if done == clients:
             break
         if done - last_reported >= max(1, clients // 10):
-            print("    ÒÑÍê³É %d/%d ¿Í»§¶Ë..." % (done, clients), flush=True)
+            print("    å·²å®Œæˆ %d/%d å®¢æˆ·ç«¯..." % (done, clients), flush=True)
             last_reported = done
         time.sleep(0.05)
 
@@ -163,7 +163,7 @@ def run_round(host, port, clients, messages, payload_size, timeout):
 
 
 def print_round(clients, stats, total):
-    """´òÓ¡Ò»ÂÖÑ¹²âµÄÏêÏ¸Í³¼Æ"""
+    """æ‰“å°ä¸€è½®å‹æµ‹çš„è¯¦ç»†ç»Ÿè®¡"""
     conn_total = (stats.ok_conn + stats.refused +
                   stats.conn_timeout + stats.conn_other)
     ok_rate = stats.ok_conn * 100.0 / conn_total if conn_total else 0.0
@@ -171,16 +171,16 @@ def print_round(clients, stats, total):
     avg_ms = stats.latency_sum / stats.ok_req * 1000.0 if stats.ok_req else 0.0
     max_ms = stats.latency_max * 1000.0
 
-    print("Á¬½Ó: ³É¹¦ %d/%d (%.1f%%), ±»¾Ü %d, ³¬Ê± %d, ÆäËûÊ§°Ü %d"
+    print("è¿æ¥: æˆåŠŸ %d/%d (%.1f%%), è¢«æ‹’ %d, è¶…æ—¶ %d, å…¶ä»–å¤±è´¥ %d"
           % (stats.ok_conn, conn_total, ok_rate,
              stats.refused, stats.conn_timeout, stats.conn_other))
-    print("ÇëÇó: ·¢ËÍ %d, ³É¹¦ %d, Ê§°Ü %d"
+    print("è¯·æ±‚: å‘é€ %d, æˆåŠŸ %d, å¤±è´¥ %d"
           % (stats.attempted, stats.ok_req, stats.fail_req))
-    print("×ÜºÄÊ±: %.3f Ãë" % total)
+    print("æ€»è€—æ—¶: %.3f ç§’" % total)
     print("QPS: %.1f" % qps)
-    print("ÑÓ³Ù: Æ½¾ù %.2f ms, ×î´ó %.2f ms" % (avg_ms, max_ms))
+    print("å»¶è¿Ÿ: å¹³å‡ %.2f ms, æœ€å¤§ %.2f ms" % (avg_ms, max_ms))
 
-    # ·µ»Ø»ã×ÜĞĞ,¹©×îºóµÄ¶Ô±È±í¸ñÊ¹ÓÃ
+    # è¿”å›æ±‡æ€»è¡Œ,ä¾›æœ€åçš„å¯¹æ¯”è¡¨æ ¼ä½¿ç”¨
     rate_str = "%.1f%%" % ok_rate
     return "%-8d %-9s %-10d %-10.3f %-8.1f %-12.2f %-12.2f %-6d" % (
         clients, rate_str, stats.ok_req, total, qps, avg_ms, max_ms, stats.refused)
@@ -188,7 +188,7 @@ def print_round(clients, stats, total):
 
 
 def append_to_csv(rows, messages, payload_size):
-    """°ÑÕâÒ»ÂÖÑ¹²â½á¹û×·¼Óµ½ benchmark_log.csv(Ê×´Î×Ô¶¯Ğ´±íÍ·)"""
+    """æŠŠè¿™ä¸€è½®å‹æµ‹ç»“æœè¿½åŠ åˆ° benchmark_log.csv(é¦–æ¬¡è‡ªåŠ¨å†™è¡¨å¤´)"""
     import csv
     import os
     path = 'benchmark_log.csv'
@@ -196,34 +196,34 @@ def append_to_csv(rows, messages, payload_size):
     with open(path, 'a', newline='', encoding='utf-8-sig') as f:
         writer = csv.writer(f)
         if new_file:
-            writer.writerow(['Ê±¼ä', '²¢·¢', '³É¹¦ÂÊ%', '³É¹¦ÇëÇó', '×ÜºÄÊ±(s)',
-                             'QPS', 'Æ½¾ùÑÓ³Ù(ms)', '×î´óÑÓ³Ù(ms)', '±»¾Ü',
-                             'ÏûÏ¢/Á¬½Ó', 'ÏûÏ¢Ìå(×Ö½Ú)'])
+            writer.writerow(['æ—¶é—´', 'å¹¶å‘', 'æˆåŠŸç‡%', 'æˆåŠŸè¯·æ±‚', 'æ€»è€—æ—¶(s)',
+                             'QPS', 'å¹³å‡å»¶è¿Ÿ(ms)', 'æœ€å¤§å»¶è¿Ÿ(ms)', 'è¢«æ‹’',
+                             'æ¶ˆæ¯/è¿æ¥', 'æ¶ˆæ¯ä½“(å­—èŠ‚)'])
         now = time.strftime('%Y-%m-%d %H:%M:%S')
         for r in rows:
             writer.writerow([now] + list(r) + [messages, payload_size])
 
 
 def main():
-    parser = argparse.ArgumentParser(description="·şÎñÆ÷²¢·¢Ñ¹²â½Å±¾")
-    parser.add_argument("--host", default="192.168.159.128", help="·şÎñÆ÷ IP,Ä¬ÈÏ 192.168.159.128")
-    parser.add_argument("--port", type=int, default=8888, help="·şÎñÆ÷¶Ë¿Ú,Ä¬ÈÏ 8888")
+    parser = argparse.ArgumentParser(description="æœåŠ¡å™¨å¹¶å‘å‹æµ‹è„šæœ¬")
+    parser.add_argument("--host", default="192.168.159.128", help="æœåŠ¡å™¨ IP,é»˜è®¤ 192.168.159.128")
+    parser.add_argument("--port", type=int, default=8888, help="æœåŠ¡å™¨ç«¯å£,é»˜è®¤ 8888")
     parser.add_argument("--clients", default="100,500,1000",
-                        help="²¢·¢Êı,¶ººÅ·Ö¸ô,Ä¬ÈÏ 100,500,1000")
+                        help="å¹¶å‘æ•°,é€—å·åˆ†éš”,é»˜è®¤ 100,500,1000")
     parser.add_argument("--messages", type=int, default=20,
-                        help="Ã¿¸öÁ¬½ÓÁ¬Ğø·¢ËÍµÄÏûÏ¢ÌõÊı,Ä¬ÈÏ 20")
+                        help="æ¯ä¸ªè¿æ¥è¿ç»­å‘é€çš„æ¶ˆæ¯æ¡æ•°,é»˜è®¤ 20")
     parser.add_argument("--payload-size", type=int, default=64,
-                        help="µ¥ÌõÏûÏ¢Ìå´óĞ¡(×Ö½Ú),Ä¬ÈÏ 64")
+                        help="å•æ¡æ¶ˆæ¯ä½“å¤§å°(å­—èŠ‚),é»˜è®¤ 64")
     parser.add_argument("--timeout", type=float, default=10.0,
-                        help="Á¬½Ó/¶ÁĞ´³¬Ê±(Ãë),Ä¬ÈÏ 10")
+                        help="è¿æ¥/è¯»å†™è¶…æ—¶(ç§’),é»˜è®¤ 10")
     args = parser.parse_args()
 
-    # ÏÈÌ½Ò»ÏÂ·şÎñÆ÷ÊÇ·ñÔÚ¼àÌı,¸ø¸öÓÑºÃÌáÊ¾
+    # å…ˆæ¢ä¸€ä¸‹æœåŠ¡å™¨æ˜¯å¦åœ¨ç›‘å¬,ç»™ä¸ªå‹å¥½æç¤º
     try:
         probe = socket.create_connection((args.host, args.port), timeout=3)
         probe.close()
     except Exception:
-        print("ÎŞ·¨Á¬½Ó·şÎñÆ÷ %s:%d,ÇëÏÈÆô¶¯ ./server.out <¶Ë¿Ú>" % (args.host, args.port))
+        print("æ— æ³•è¿æ¥æœåŠ¡å™¨ %s:%d,è¯·å…ˆå¯åŠ¨ ./server.out <ç«¯å£>" % (args.host, args.port))
         sys.exit(1)
 
     levels = []
@@ -232,22 +232,22 @@ def main():
         if part:
             levels.append(int(part))
     if not levels:
-        print("--clients ²ÎÊıÎŞĞ§,Ê¾Àı: --clients 100,500,1000")
+        print("--clients å‚æ•°æ— æ•ˆ,ç¤ºä¾‹: --clients 100,500,1000")
         sys.exit(1)
 
-    print("Ñ¹²â²ÎÊı: ²¢·¢ %s, Ã¿Á¬½Ó %d ÌõÏûÏ¢, ÏûÏ¢Ìå %d ×Ö½Ú"
+    print("å‹æµ‹å‚æ•°: å¹¶å‘ %s, æ¯è¿æ¥ %d æ¡æ¶ˆæ¯, æ¶ˆæ¯ä½“ %d å­—èŠ‚"
           % (",".join(str(x) for x in levels), args.messages, args.payload_size))
-    print("·şÎñÆ÷: %s:%d\n" % (args.host, args.port))
+    print("æœåŠ¡å™¨: %s:%d\n" % (args.host, args.port))
 
     rows = []
     raw_rows = []
     for clients in levels:
-        print("========== ²¢·¢ %d ==========" % clients)
+        print("========== å¹¶å‘ %d ==========" % clients)
         stats, total = run_round(args.host, args.port, clients,
                                  args.messages, args.payload_size, args.timeout)
         row = print_round(clients, stats, total)
         rows.append(row)
-        # ÊÕ¼¯Ô­Ê¼ÊıÖµ,¹©Ğ´ CSV
+        # æ”¶é›†åŸå§‹æ•°å€¼,ä¾›å†™ CSV
         conn_total = (stats.ok_conn + stats.refused +
                       stats.conn_timeout + stats.conn_other)
         ok_rate = stats.ok_conn * 100.0 / conn_total if conn_total else 0.0
@@ -258,21 +258,21 @@ def main():
                          qps, avg_ms, max_ms, stats.refused))
         print()
 
-    print("================== »ã×Ü¶Ô±È ==================")
+    print("================== æ±‡æ€»å¯¹æ¯” ==================")
     print("%-8s %-9s %-10s %-10s %-8s %-12s %-12s %-6s" % (
-        "²¢·¢Êı", "³É¹¦ÂÊ", "³É¹¦ÇëÇó", "×ÜºÄÊ±(s)", "QPS",
-        "Æ½¾ùÑÓ³Ù(ms)", "×î´óÑÓ³Ù(ms)", "±»¾Ü"))
+        "å¹¶å‘æ•°", "æˆåŠŸç‡", "æˆåŠŸè¯·æ±‚", "æ€»è€—æ—¶(s)", "QPS",
+        "å¹³å‡å»¶è¿Ÿ(ms)", "æœ€å¤§å»¶è¿Ÿ(ms)", "è¢«æ‹’"))
     for row in rows:
         print(row)
 
-    # ¼ÇÂ¼±¾´ÎÑ¹²âÊı¾İ
+    # è®°å½•æœ¬æ¬¡å‹æµ‹æ•°æ®
     append_to_csv(raw_rows, args.messages, args.payload_size)
-    print("\nÒÑ¼ÇÂ¼µ½ benchmark_log.csv")
+    print("\nå·²è®°å½•åˆ° benchmark_log.csv")
 
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print("\nÑ¹²â±»ÖĞ¶Ï(Ctrl+C)")
+        print("\nå‹æµ‹è¢«ä¸­æ–­(Ctrl+C)")
         sys.exit(130)

@@ -14,36 +14,36 @@ using namespace std;
 atomic<bool> EpollServer::stop_{ false };
 
 EpollServer::EpollServer(int port, ThreadPool& pool,int heartbeat_timeout=60):port_(port), pool_(pool),heartbeat_timeout_(heartbeat_timeout) {
-	//´´½¨¼àÌıÌ×½Ó×Ö
+	//åˆ›å»ºç›‘å¬å¥—æ¥å­—
 	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-	//°Ñlisten_fd_Ò²ÉèÖÃÎª·Ç×èÈû
+	//æŠŠlisten_fd_ä¹Ÿè®¾ç½®ä¸ºéé˜»å¡
 	int fl = fcntl(listen_fd_, F_GETFL,0);
 	fcntl(listen_fd_, F_SETFL, fl | O_NONBLOCK);
 
 	if (listen_fd_ < 0) { LOG_ERROR("socket failed: %s", strerror(errno)); exit(1); }
-	//È·¶¨Òª°ó¶¨µÄ¶Ë¿Ú
+	//ç¡®å®šè¦ç»‘å®šçš„ç«¯å£
 	sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_port = htons(port);
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = INADDR_ANY;
 	int opt = 1;
-	//ÉèÖÃÌ×½Ó×ÖÑ¡Ïî,ÔÊĞíµØÖ·¸´ÓÃ
+	//è®¾ç½®å¥—æ¥å­—é€‰é¡¹,å…è®¸åœ°å€å¤ç”¨
 	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-	//°ó¶¨¶Ë¿Ú
+	//ç»‘å®šç«¯å£
 	if (bind(listen_fd_, (sockaddr*) &addr, sizeof(addr)) < 0) {
 		LOG_ERROR("bind failed: %s", strerror(errno));
 		exit(1);
 	}
-	//´´½¨ epoll ¾ä±ú
+	//åˆ›å»º epoll å¥æŸ„
 	epfd_ = epoll_create(1);
 }
 
 void EpollServer::epollserver_exit() {
 	LOG_INFO("server stopping, closing connections...");
-	//ÏÈ¹Ø±ÕÏß³Ì³Ø
+	//å…ˆå…³é—­çº¿ç¨‹æ± 
 	pool_.close();
-	//clients ĞèÒªÏß³Ì°²È«,ËùÒÔ¼ÓËø
+	//clients éœ€è¦çº¿ç¨‹å®‰å…¨,æ‰€ä»¥åŠ é”
 	{
 		lock_guard<mutex>	cltmtx(client_mutex);
 		for (auto& fd : fd_list) {
@@ -51,7 +51,7 @@ void EpollServer::epollserver_exit() {
 		}
 		fd_list.clear();
 	}
-	//ÇåÀíconnection
+	//æ¸…ç†connection
 
 	LOG_INFO("server stopped.");
 
@@ -77,13 +77,13 @@ void EpollServer::heartBeatCheck() {
 void EpollServer::run() {
 	int tick = 0;
 	while (!stop_) {
-		int n = epoll_wait(epfd_, events_, 64, 100);//µÈ´ıÊÂ¼ş·¢Éú
+		int n = epoll_wait(epfd_, events_, 64, 100);//ç­‰å¾…äº‹ä»¶å‘ç”Ÿ
 		if (n < 0) {
-			if (errno == EINTR) continue;   // ±»ĞÅºÅ´ò¶Ï,ÖØĞÂµÈ
+			if (errno == EINTR) continue;   // è¢«ä¿¡å·æ‰“æ–­,é‡æ–°ç­‰
 			LOG_ERROR("epoll_wait error: %s", strerror(errno));
 			continue;
 		}
-		//Ô­±¾½á¹¹»áÈÃepolloutÊÂ¼şÓÅÏÈ¼¶´óÓÚepollin£¬Õâ¸öÊ±ºòÈç¹ûÊÂ¼şÓÖ¶ÁÓÖÓĞ¶«Î÷Ã»Ğ´Íê£¬Ğ´µÄÊÂ¼ş»áÓÅÏÈ±»ÈÏÁì£¬È»ºóÖ±½ÓµÈµ½ÏÂÒ»ÂÖ
+		//åŸæœ¬ç»“æ„ä¼šè®©epolloutäº‹ä»¶ä¼˜å…ˆçº§å¤§äºepollinï¼Œè¿™ä¸ªæ—¶å€™å¦‚æœäº‹ä»¶åˆè¯»åˆæœ‰ä¸œè¥¿æ²¡å†™å®Œï¼Œå†™çš„äº‹ä»¶ä¼šä¼˜å…ˆè¢«è®¤é¢†ï¼Œç„¶åç›´æ¥ç­‰åˆ°ä¸‹ä¸€è½®
 		for (int i = 0;i < n;i++) {
 			int fd = events_[i].data.fd;
 			uint32_t ev = events_[i].events;
@@ -101,7 +101,7 @@ void EpollServer::run() {
 			
 		}
 		if (++tick >= 10) {
-			//1sÉ¨ÃèÒ»´Î
+			//1sæ‰«æä¸€æ¬¡
 			heartBeatCheck();
 			tick = 0;
 		}
@@ -110,10 +110,10 @@ void EpollServer::run() {
 }
 
 void EpollServer::start() {
-	//³õÊ¼»¯
-	listen(listen_fd_, 128);// backlog=ÅÅ¶ÓÉÏÏŞ,¼Ó´ó·ÀÍ»·¢Á¬½Ó»ıÑ¹
+	//åˆå§‹åŒ–
+	listen(listen_fd_, 128);// backlog=æ’é˜Ÿä¸Šé™,åŠ å¤§é˜²çªå‘è¿æ¥ç§¯å‹
 	LOG_INFO("start listening on port %d", port_);
-	//ÏÈ°Ñ¼àÌıÌ×½Ó×Ö¼Ó½øepollÊÂ¼şÁĞ±í
+	//å…ˆæŠŠç›‘å¬å¥—æ¥å­—åŠ è¿›epolläº‹ä»¶åˆ—è¡¨
 	epoll_event ev;
 	ev.events = EPOLLIN | EPOLLONESHOT;
 	ev.data.fd = listen_fd_;
@@ -123,7 +123,7 @@ void EpollServer::start() {
 	signal(SIGPIPE, SIG_IGN);
 	run();
 }
-//ÓÅÑÅÍË³ö±êÖ¾
+//ä¼˜é›…é€€å‡ºæ ‡å¿—
 void EpollServer::handle_signal(int) {
 	stop_ = true;
 }
@@ -132,7 +132,7 @@ void  EpollServer::handleClient(int fd) {
 	pool_.post([this, fd] {
 		char buf[1024];
 		int len = recv(fd, buf, sizeof(buf), 0);
-		if (len == 0) {//¹Ø±Õfd£¬¿ÉÄÜfd¶ÔÓ¦µÄ»º³åÇøÈÔÈ»ÓĞ¶«Î÷£¬ĞèÒªÈ«·¢ÍêÔÙ¹Ø
+		if (len == 0) {//å…³é—­fdï¼Œå¯èƒ½fdå¯¹åº”çš„ç¼“å†²åŒºä»ç„¶æœ‰ä¸œè¥¿ï¼Œéœ€è¦å…¨å‘å®Œå†å…³
 			SendResult result;
 			{
 				lock_guard<mutex> lck(client_mutex);
@@ -143,7 +143,7 @@ void  EpollServer::handleClient(int fd) {
 			}
 			epoll_event nev;
 			nev.data.fd = fd;
-			//Ã»¶«Î÷ÁË
+			//æ²¡ä¸œè¥¿äº†
 			if (result == SendResult::SentAll) {
 				closeConnection(fd);
 			}
@@ -151,7 +151,7 @@ void  EpollServer::handleClient(int fd) {
 				nev.events = EPOLLOUT | EPOLLONESHOT;
 				epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
 			}
-			else {//³ö´í
+			else {//å‡ºé”™
 				closeConnection(fd);
 			}
 		}
@@ -163,7 +163,7 @@ void  EpollServer::handleClient(int fd) {
 				auto it = fd_list.find(fd);
 				if (it == fd_list.end())	return;
 				it->second.appendRecv(buf, len);
-				it->second.touchActive();//Ë¢ĞÂÒ»ÏÂ»îÔ¾Ê±¼ä
+				it->second.touchActive();//åˆ·æ–°ä¸€ä¸‹æ´»è·ƒæ—¶é—´
 				msgs = move(it->second.processBufferedData());
 				frame_error = it->second.hasFrameError();
 			}
@@ -172,15 +172,15 @@ void  EpollServer::handleClient(int fd) {
 				return;
 			}
 			for (auto& msg : msgs) {
-				if (handler_) handler_(*this, fd, msg);    //ËøÍâ´¥·¢»Øµ÷
+				if (handler_) handler_(*this, fd, msg);    //é”å¤–è§¦å‘å›è°ƒ
 			}
-			SendResult result{ SendResult::Pending };//ÏûÏ¢Ò»´ÎÊÇ²»ÊÇÈ«·¢ÍêÁË£¬È«·¢Íê¾ÍÖ±½ÓÎŞÊÓÁË£¬
-			//Ã»È«·¢ÍêµÇ¼Ç³ÉepolloutµÈhandlewrite¼ÌĞø·¢
+			SendResult result{ SendResult::Pending };//æ¶ˆæ¯ä¸€æ¬¡æ˜¯ä¸æ˜¯å…¨å‘å®Œäº†ï¼Œå…¨å‘å®Œå°±ç›´æ¥æ— è§†äº†ï¼Œ
+			//æ²¡å…¨å‘å®Œç™»è®°æˆepolloutç­‰handlewriteç»§ç»­å‘
 			{
 				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
 				if (it == fd_list.end()) return;
-				result = it->second.sendReadyMessage();    // ÊÕÎ²·¢ËÍ
+				result = it->second.sendReadyMessage();    // æ”¶å°¾å‘é€
 			}
 
 			epoll_event nev;
@@ -198,13 +198,13 @@ void  EpollServer::handleClient(int fd) {
 		}
 		else {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				// Ã»Êı¾İ,ºöÂÔ;µ« EPOLLONESHOT ´¥·¢¹ıÒ»´Î,ÒªÖØĞÂ MOD »Ø EPOLLIN
+				// æ²¡æ•°æ®,å¿½ç•¥;ä½† EPOLLONESHOT è§¦å‘è¿‡ä¸€æ¬¡,è¦é‡æ–° MOD å› EPOLLIN
 				epoll_event nev;
 				nev.data.fd = fd;
 				nev.events = EPOLLIN | EPOLLONESHOT;
 				epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
 			}
-			else {//Á¬½ÓÕæ³ö´íÁË
+			else {//è¿æ¥çœŸå‡ºé”™äº†
 				closeConnection(fd);
 			}
 		}
@@ -232,10 +232,10 @@ void EpollServer::handleWrite(int fd) {
 				return;
 			}
 			nev.events = EPOLLIN | EPOLLONESHOT;
-		}//¶Ô·½³ÌĞò¿ÉÄÜ»á×èÈû²»¶Á,Õâ¸öÊ±ºòsend¾Í»á¿¨×¡,ÎÒÃÇĞèÒª½â¾öÕâ¸öÎÊÌâ
-		else if (result == SendResult::Pending) {//¿ÉÄÜ»¹»áÓĞĞÂÊı¾İÍ¬Ê±½øÀ´£¬Òª¼Óepollin
+		}//å¯¹æ–¹ç¨‹åºå¯èƒ½ä¼šé˜»å¡ä¸è¯»,è¿™ä¸ªæ—¶å€™sendå°±ä¼šå¡ä½,æˆ‘ä»¬éœ€è¦è§£å†³è¿™ä¸ªé—®é¢˜
+		else if (result == SendResult::Pending) {//å¯èƒ½è¿˜ä¼šæœ‰æ–°æ•°æ®åŒæ—¶è¿›æ¥ï¼Œè¦åŠ epollin
 			if (closing) {
-				nev.events = EPOLLOUT | EPOLLONESHOT;//¹Ø±ÕÖĞ£¬²»¹Ò¶Á
+				nev.events = EPOLLOUT | EPOLLONESHOT;//å…³é—­ä¸­ï¼Œä¸æŒ‚è¯»
 			}
 			else {
 				nev.events = EPOLLIN | EPOLLOUT | EPOLLONESHOT;
@@ -259,22 +259,22 @@ void EpollServer::closeConnection(int fd) {
 	close(fd);
 }
 
-void EpollServer::acceptNewClient() {//µ÷»Øµ÷º¯Êı£¬È·¶¨fd¶ÔÓ¦µÄÒµÎñÂß¼­
+void EpollServer::acceptNewClient() {//è°ƒå›è°ƒå‡½æ•°ï¼Œç¡®å®šfdå¯¹åº”çš„ä¸šåŠ¡é€»è¾‘
 	while (true) {
 		int client_fd = accept(listen_fd_, nullptr, nullptr);
 
 		if (client_fd < 0) {
-			//ºÍ·¢ËÍµÄÊ±ºòµÄÈıÌ¬´¦ÀíÀàËÆ
-			if (errno == EINTR)	continue;//±»ĞÅºÅ´ò¶Ï£¬ÖØÊÔ
-			if (errno == EAGAIN || errno == EWOULDBLOCK)	break;//½ÓÍêÁË£¬ÍË³ö
-			LOG_ERROR("accept failed: %s", strerror(errno));//³ö´í
+			//å’Œå‘é€çš„æ—¶å€™çš„ä¸‰æ€å¤„ç†ç±»ä¼¼
+			if (errno == EINTR)	continue;//è¢«ä¿¡å·æ‰“æ–­ï¼Œé‡è¯•
+			if (errno == EAGAIN || errno == EWOULDBLOCK)	break;//æ¥å®Œäº†ï¼Œé€€å‡º
+			LOG_ERROR("accept failed: %s", strerror(errno));//å‡ºé”™
 			return;
 		}
 		{
-			//Î¬»¤¿Í»§Á¬½Ó
+			//ç»´æŠ¤å®¢æˆ·è¿æ¥
 			lock_guard<mutex> clmtx(client_mutex);
 			int flag = fcntl(client_fd, F_GETFL, 0);
-			fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//ÉèÖÃ¿Í»§·Ç×èÈû£¬ÎªÁË´¦ÀíÔÚsendÊ±ºòµÄ×èÈûÎÊÌâ
+			fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//è®¾ç½®å®¢æˆ·éé˜»å¡ï¼Œä¸ºäº†å¤„ç†åœ¨sendæ—¶å€™çš„é˜»å¡é—®é¢˜
 			fd_list.insert({ client_fd,Connection(client_fd) });
 		}
 		LOG_DEBUG("new client fd=%d", client_fd);
@@ -298,7 +298,7 @@ void EpollServer::sendTo(int fd, const string& msg) {
 	lock_guard<mutex> lck(client_mutex);       
 	auto it = fd_list.find(fd);                 
 	if (it != fd_list.end())                    
-		it->second.sendMsgToSendBuf(msg);                //Èû½øÄÇ¸öÁ¬½ÓµÄ»º³å
+		it->second.sendMsgToSendBuf(msg);                //å¡è¿›é‚£ä¸ªè¿æ¥çš„ç¼“å†²
 }
 
 void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
@@ -325,7 +325,7 @@ void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
 			epoll_ctl(epfd_, EPOLL_CTL_MOD, it.first, &nev);
 		}
 	}
-	for (auto fd : toClose) {              //  ËøÍâ,±éÀú½áÊø²Å¹Ø
+	for (auto fd : toClose) {              //  é”å¤–,éå†ç»“æŸæ‰å…³
 		closeConnection(fd);
 	}
 }

@@ -4,7 +4,7 @@ using namespace std;
 
 ThreadPool::ThreadPool(size_t thread_count) {
 	if (thread_count == 0) {
-		thread_count = std::thread::hardware_concurrency();//自动选取cpu核数开线程
+		thread_count = std::thread::hardware_concurrency();//鑷姩閫夊彇cpu鏍告暟寮�绾跨▼
 	}
 	workers_.reserve(thread_count);
 	for (size_t i = 0;i < thread_count;i++) {

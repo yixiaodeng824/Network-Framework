@@ -1,19 +1,19 @@
-// ÈÕÖ¾ÅäÖÃÎÄ¼ş²âÊÔ:ÑéÖ¤ logger.conf ¼ÓÔØ¡¢¸ñÊ½¶¨ÖÆ¡¢Êä³ö³¯Ïò(console/file)¡¢
-// ×Ô¶¨Òå Sink À©Õ¹¡¢¼¶±ğ¹ıÂË
+// æ—¥å¿—é…ç½®æ–‡ä»¶æµ‹è¯•:éªŒè¯ logger.conf åŠ è½½ã€æ ¼å¼å®šåˆ¶ã€è¾“å‡ºæœå‘(console/file)ã€
+// è‡ªå®šä¹‰ Sink æ‰©å±•ã€çº§åˆ«è¿‡æ»¤
 //
-// ±àÒë(g++ / MinGW):
+// ç¼–è¯‘(g++ / MinGW):
 //   g++ -std=c++17 -Wall -Wextra -pedantic -I src/log -I src/thread
 //       src/log/Logger.cpp src/thread/MessageQueue.cpp src/log/test_logger_config.cpp
 //       -o test_logger_config
-// ÔËĞĞ:
+// è¿è¡Œ:
 //   ./test_logger_config
 //
-// ÑéÖ¤µã:
-//   1. initFromFile ÕıÈ·½âÎö level / format / target / file / queue_capacity
-//   2. ×Ô¶¨Òå¸ñÊ½ÉúĞ§:°´Õ¼Î»·ûäÖÈ¾,ÎŞ [tid=] ±ê¼Ç
-//   3. target = console,file Í¬Ê±Êä³öµ½¿ØÖÆÌ¨ºÍÎÄ¼ş
-//   4. ×Ô¶¨Òå Sink ×¢²áºóÍ¬ÑùÊÕµ½ÈÕÖ¾(¿ÉÀ©Õ¹ĞÔ)
-//   5. ÅäÖÃÎÄ¼şÖĞµÄ¼¶±ğ¹ıÂËÉúĞ§
+// éªŒè¯ç‚¹:
+//   1. initFromFile æ­£ç¡®è§£æ level / format / target / file / queue_capacity
+//   2. è‡ªå®šä¹‰æ ¼å¼ç”Ÿæ•ˆ:æŒ‰å ä½ç¬¦æ¸²æŸ“,æ—  [tid=] æ ‡è®°
+//   3. target = console,file åŒæ—¶è¾“å‡ºåˆ°æ§åˆ¶å°å’Œæ–‡ä»¶
+//   4. è‡ªå®šä¹‰ Sink æ³¨å†ŒååŒæ ·æ”¶åˆ°æ—¥å¿—(å¯æ‰©å±•æ€§)
+//   5. é…ç½®æ–‡ä»¶ä¸­çš„çº§åˆ«è¿‡æ»¤ç”Ÿæ•ˆ
 
 #include "Logger.h"
 
@@ -35,8 +35,8 @@ void expect(bool ok, const char* what) {
     }
 }
 
-// ×Ô¶¨ÒåÊä³öÄ¿±ê:°ÑÊÕµ½µÄĞĞ´æ½øÄÚ´æ,ÑéÖ¤¿ÉÀ©Õ¹ĞÔ
-// ÓÃ shared_ptr ±£´æÊı¾İ,±ÜÃâ sink ±»ÈÕÖ¾Æ÷Ïú»Ùºó²âÊÔÈÔ·ÃÎÊËü
+// è‡ªå®šä¹‰è¾“å‡ºç›®æ ‡:æŠŠæ”¶åˆ°çš„è¡Œå­˜è¿›å†…å­˜,éªŒè¯å¯æ‰©å±•æ€§
+// ç”¨ shared_ptr ä¿å­˜æ•°æ®,é¿å… sink è¢«æ—¥å¿—å™¨é”€æ¯åæµ‹è¯•ä»è®¿é—®å®ƒ
 class CaptureSink : public logger::Sink {
 public:
     explicit CaptureSink(std::shared_ptr<std::vector<std::string>> lines)
@@ -62,10 +62,10 @@ std::string readFile(const char* path) {
 } // namespace
 
 int main() {
-    // Ğ´Ò»¸ö²âÊÔÓÃÅäÖÃÎÄ¼ş(²»ÎÛÈ¾²Ö¿â,ÔËĞĞ½áÊøÇ°É¾³ı)
+    // å†™ä¸€ä¸ªæµ‹è¯•ç”¨é…ç½®æ–‡ä»¶(ä¸æ±¡æŸ“ä»“åº“,è¿è¡Œç»“æŸå‰åˆ é™¤)
     {
         std::ofstream out("test_logger.conf");
-        out << "# ²âÊÔÅäÖÃ\n";
+        out << "# æµ‹è¯•é…ç½®\n";
         out << "level = info\n";
         out << "format = [%l] {%t} %m\n";
         out << "target = console,file\n";
@@ -73,16 +73,16 @@ int main() {
         out << "queue_capacity = 1024\n";
     }
 
-    // ×¢²á×Ô¶¨ÒåÊä³öÄ¿±ê(±ØĞëÔÚµÚÒ»´Î´òÈÕÖ¾Ö®Ç°)
+    // æ³¨å†Œè‡ªå®šä¹‰è¾“å‡ºç›®æ ‡(å¿…é¡»åœ¨ç¬¬ä¸€æ¬¡æ‰“æ—¥å¿—ä¹‹å‰)
     std::shared_ptr<std::vector<std::string>> lines =
         std::make_shared<std::vector<std::string>>();
     logger::addSink(std::make_unique<CaptureSink>(lines));
 
     logger::initFromFile("test_logger.conf");
     expect(logger::getLogLevel() == logger::LOG_LEVEL_INFO,
-           "ÅäÖÃÎÄ¼ş level=info ÉúĞ§");
+           "é…ç½®æ–‡ä»¶ level=info ç”Ÿæ•ˆ");
 
-    // ¼¶±ğ¹ıÂË:INFO ÏÂ DEBUG ²»Êä³ö
+    // çº§åˆ«è¿‡æ»¤:INFO ä¸‹ DEBUG ä¸è¾“å‡º
     LOG_DEBUG("this DEBUG line should be filtered");
     LOG_INFO("hello config logger");
     LOG_WARN("warning number %d", 3);
@@ -90,31 +90,31 @@ int main() {
 
     logger::shutdown();
 
-    // 1) ÎÄ¼şÊä³ö:target º¬ file,ÇÒ×Ô¶¨Òå¸ñÊ½ÉúĞ§
+    // 1) æ–‡ä»¶è¾“å‡º:target å« file,ä¸”è‡ªå®šä¹‰æ ¼å¼ç”Ÿæ•ˆ
     const std::string fileContent = readFile("test_logger_config.log");
     expect(fileContent.find("hello config logger") != std::string::npos,
-           "ÎÄ¼şÊÕµ½ÈÕÖ¾(Êä³ö³¯Ïò file ÉúĞ§)");
+           "æ–‡ä»¶æ”¶åˆ°æ—¥å¿—(è¾“å‡ºæœå‘ file ç”Ÿæ•ˆ)");
     expect(fileContent.find("[INFO]") != std::string::npos,
-           "×Ô¶¨Òå¸ñÊ½ [%l] ÉúĞ§");
+           "è‡ªå®šä¹‰æ ¼å¼ [%l] ç”Ÿæ•ˆ");
     expect(fileContent.find("} hello config logger\n") != std::string::npos,
-           "×Ô¶¨Òå¸ñÊ½ {%t} %m ÉúĞ§");
+           "è‡ªå®šä¹‰æ ¼å¼ {%t} %m ç”Ÿæ•ˆ");
     expect(fileContent.find("[tid=") == std::string::npos,
-           "¸ñÊ½²»º¬ %T Ê±Ã»ÓĞ [tid=] ±ê¼Ç");
+           "æ ¼å¼ä¸å« %T æ—¶æ²¡æœ‰ [tid=] æ ‡è®°");
     expect(fileContent.find("this DEBUG line") == std::string::npos,
-           "ÅäÖÃÎÄ¼ş level=info ¹ıÂË DEBUG");
+           "é…ç½®æ–‡ä»¶ level=info è¿‡æ»¤ DEBUG");
 
-    // 2) ×Ô¶¨Òå Sink(¿ÉÀ©Õ¹ĞÔ)
-    expect(lines->size() == 3, "×Ô¶¨Òå Sink ÊÕµ½ 3 ÌõÈÕÖ¾(DEBUG ±»¹ıÂË)");
+    // 2) è‡ªå®šä¹‰ Sink(å¯æ‰©å±•æ€§)
+    expect(lines->size() == 3, "è‡ªå®šä¹‰ Sink æ”¶åˆ° 3 æ¡æ—¥å¿—(DEBUG è¢«è¿‡æ»¤)");
     if (lines->size() == 3) {
         expect((*lines)[0].rfind("[INFO] {", 0) == 0,
-               "×Ô¶¨Òå Sink ĞĞÊ×Îª [INFO] {");
+               "è‡ªå®šä¹‰ Sink è¡Œé¦–ä¸º [INFO] {");
         expect((*lines)[0].find("} hello config logger\n") != std::string::npos,
-               "×Ô¶¨Òå Sink ĞĞÎ²Îª } ÏûÏ¢");
+               "è‡ªå®šä¹‰ Sink è¡Œå°¾ä¸º } æ¶ˆæ¯");
         expect((*lines)[2].find("[ERROR]") != std::string::npos,
-               "×Ô¶¨Òå Sink ÊÕµ½ ERROR ¼¶±ğÈÕÖ¾");
+               "è‡ªå®šä¹‰ Sink æ”¶åˆ° ERROR çº§åˆ«æ—¥å¿—");
     }
 
-    // ÇåÀí²âÊÔ²úÎï
+    // æ¸…ç†æµ‹è¯•äº§ç‰©
     std::remove("test_logger.conf");
     std::remove("test_logger_config.log");
 

@@ -8,7 +8,7 @@ WorkThread::WorkThread(MessageQueue* queue) :m_queue(queue),m_thread(&WorkThread
 
 WorkThread::~WorkThread() {
 	this->join();
-}// ÇëÇóÍ£Ö¹²¢ join
+}// è¯·æ±‚åœæ­¢å¹¶ join
 
 
 void WorkThread::join() {
@@ -26,10 +26,10 @@ void WorkThread::run() {
 				task(); 
 			}
 			catch (exception& e) {
-				cerr << "Òì³£ÊÇ" << e.what();
+				cerr << "å¼‚å¸¸æ˜¯" << e.what();
 			}
 			catch (...) {
-				cerr << "Î´ÖªÒì³£";
+				cerr << "æœªçŸ¥å¼‚å¸¸";
 			}
 		}	
 	}
