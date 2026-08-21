@@ -1,4 +1,3 @@
-# -*- coding: gbk -*-
 # =====================================================
 #  stress_test.py - 服务器并发压测脚本
 #
@@ -28,19 +27,19 @@ import time
 
 def build_msg(payload):
     """组一条消息: [4 字节长度(大端)][消息体]"""
-    return struct.pack('>I', len(payload)) + payload
+    return struct.pack(">I", len(payload)) + payload
 
 
 def recv_one(sock):
     """按协议读取一条完整消息;连接被关闭返回 None"""
-    header = b''
+    header = b""
     while len(header) < 4:
         chunk = sock.recv(4 - len(header))
         if not chunk:
             return None
         header += chunk
-    length = struct.unpack('>I', header)[0]
-    body = b''
+    length = struct.unpack(">I", header)[0]
+    body = b""
     while len(body) < length:
         chunk = sock.recv(length - len(body))
         if not chunk:
@@ -54,13 +53,13 @@ class RoundStats(object):
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.ok_conn = 0       # 连接成功数
-        self.refused = 0       # 连接被拒数
+        self.ok_conn = 0  # 连接成功数
+        self.refused = 0  # 连接被拒数
         self.conn_timeout = 0  # 连接超时数
-        self.conn_other = 0    # 其他连接失败数
-        self.attempted = 0     # 尝试发送的请求总数
-        self.ok_req = 0        # 回显正确的请求数
-        self.fail_req = 0      # 失败请求数(回显错误/断开/超时)
+        self.conn_other = 0  # 其他连接失败数
+        self.attempted = 0  # 尝试发送的请求总数
+        self.ok_req = 0  # 回显正确的请求数
+        self.fail_req = 0  # 失败请求数(回显错误/断开/超时)
         self.latency_sum = 0.0  # 成功请求延迟总和(秒)
         self.latency_max = 0.0  # 成功请求最大延迟(秒)
 
@@ -129,15 +128,15 @@ def worker(host, port, payload, messages, timeout, stats, barrier):
 
 def run_round(host, port, clients, messages, payload_size, timeout):
     """跑一轮指定并发数的压测,返回 (统计结果, 总耗时秒数)"""
-    payload = b'P' * payload_size
+    payload = b"P" * payload_size
     stats = RoundStats()
     # 所有客户端线程 + 主线程一起等 barrier,保证"同时"开始连接
     barrier = threading.Barrier(clients + 1)
     threads = []
     for _ in range(clients):
         t = threading.Thread(
-            target=worker,
-            args=(host, port, payload, messages, timeout, stats, barrier))
+            target=worker, args=(host, port, payload, messages, timeout, stats, barrier)
+        )
         t.daemon = True
         t.start()
         threads.append(t)
@@ -164,18 +163,27 @@ def run_round(host, port, clients, messages, payload_size, timeout):
 
 def print_round(clients, stats, total):
     """打印一轮压测的详细统计"""
-    conn_total = (stats.ok_conn + stats.refused +
-                  stats.conn_timeout + stats.conn_other)
+    conn_total = stats.ok_conn + stats.refused + stats.conn_timeout + stats.conn_other
     ok_rate = stats.ok_conn * 100.0 / conn_total if conn_total else 0.0
     qps = stats.ok_req / total if total > 0 else 0.0
     avg_ms = stats.latency_sum / stats.ok_req * 1000.0 if stats.ok_req else 0.0
     max_ms = stats.latency_max * 1000.0
 
-    print("连接: 成功 %d/%d (%.1f%%), 被拒 %d, 超时 %d, 其他失败 %d"
-          % (stats.ok_conn, conn_total, ok_rate,
-             stats.refused, stats.conn_timeout, stats.conn_other))
-    print("请求: 发送 %d, 成功 %d, 失败 %d"
-          % (stats.attempted, stats.ok_req, stats.fail_req))
+    print(
+        "连接: 成功 %d/%d (%.1f%%), 被拒 %d, 超时 %d, 其他失败 %d"
+        % (
+            stats.ok_conn,
+            conn_total,
+            ok_rate,
+            stats.refused,
+            stats.conn_timeout,
+            stats.conn_other,
+        )
+    )
+    print(
+        "请求: 发送 %d, 成功 %d, 失败 %d"
+        % (stats.attempted, stats.ok_req, stats.fail_req)
+    )
     print("总耗时: %.3f 秒" % total)
     print("QPS: %.1f" % qps)
     print("延迟: 平均 %.2f ms, 最大 %.2f ms" % (avg_ms, max_ms))
@@ -183,39 +191,65 @@ def print_round(clients, stats, total):
     # 返回汇总行,供最后的对比表格使用
     rate_str = "%.1f%%" % ok_rate
     return "%-8d %-9s %-10d %-10.3f %-8.1f %-12.2f %-12.2f %-6d" % (
-        clients, rate_str, stats.ok_req, total, qps, avg_ms, max_ms, stats.refused)
-
+        clients,
+        rate_str,
+        stats.ok_req,
+        total,
+        qps,
+        avg_ms,
+        max_ms,
+        stats.refused,
+    )
 
 
 def append_to_csv(rows, messages, payload_size):
     """把这一轮压测结果追加到 benchmark_log.csv(首次自动写表头)"""
     import csv
     import os
-    path = 'benchmark_log.csv'
+
+    path = "benchmark_log.csv"
     new_file = not os.path.exists(path)
-    with open(path, 'a', newline='', encoding='utf-8-sig') as f:
+    with open(path, "a", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         if new_file:
-            writer.writerow(['时间', '并发', '成功率%', '成功请求', '总耗时(s)',
-                             'QPS', '平均延迟(ms)', '最大延迟(ms)', '被拒',
-                             '消息/连接', '消息体(字节)'])
-        now = time.strftime('%Y-%m-%d %H:%M:%S')
+            writer.writerow(
+                [
+                    "时间",
+                    "并发",
+                    "成功率%",
+                    "成功请求",
+                    "总耗时(s)",
+                    "QPS",
+                    "平均延迟(ms)",
+                    "最大延迟(ms)",
+                    "被拒",
+                    "消息/连接",
+                    "消息体(字节)",
+                ]
+            )
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
         for r in rows:
             writer.writerow([now] + list(r) + [messages, payload_size])
 
 
 def main():
     parser = argparse.ArgumentParser(description="服务器并发压测脚本")
-    parser.add_argument("--host", default="192.168.159.128", help="服务器 IP,默认 192.168.159.128")
+    parser.add_argument(
+        "--host", default="192.168.159.128", help="服务器 IP,默认 192.168.159.128"
+    )
     parser.add_argument("--port", type=int, default=8888, help="服务器端口,默认 8888")
-    parser.add_argument("--clients", default="100,500,1000",
-                        help="并发数,逗号分隔,默认 100,500,1000")
-    parser.add_argument("--messages", type=int, default=20,
-                        help="每个连接连续发送的消息条数,默认 20")
-    parser.add_argument("--payload-size", type=int, default=64,
-                        help="单条消息体大小(字节),默认 64")
-    parser.add_argument("--timeout", type=float, default=10.0,
-                        help="连接/读写超时(秒),默认 10")
+    parser.add_argument(
+        "--clients", default="100,500,1000", help="并发数,逗号分隔,默认 100,500,1000"
+    )
+    parser.add_argument(
+        "--messages", type=int, default=20, help="每个连接连续发送的消息条数,默认 20"
+    )
+    parser.add_argument(
+        "--payload-size", type=int, default=64, help="单条消息体大小(字节),默认 64"
+    )
+    parser.add_argument(
+        "--timeout", type=float, default=10.0, help="连接/读写超时(秒),默认 10"
+    )
     args = parser.parse_args()
 
     # 先探一下服务器是否在监听,给个友好提示
@@ -223,11 +257,13 @@ def main():
         probe = socket.create_connection((args.host, args.port), timeout=3)
         probe.close()
     except Exception:
-        print("无法连接服务器 %s:%d,请先启动 ./server.out <端口>" % (args.host, args.port))
+        print(
+            "无法连接服务器 %s:%d,请先启动 ./server.out <端口>" % (args.host, args.port)
+        )
         sys.exit(1)
 
     levels = []
-    for part in args.clients.split(','):
+    for part in args.clients.split(","):
         part = part.strip()
         if part:
             levels.append(int(part))
@@ -235,33 +271,53 @@ def main():
         print("--clients 参数无效,示例: --clients 100,500,1000")
         sys.exit(1)
 
-    print("压测参数: 并发 %s, 每连接 %d 条消息, 消息体 %d 字节"
-          % (",".join(str(x) for x in levels), args.messages, args.payload_size))
+    print(
+        "压测参数: 并发 %s, 每连接 %d 条消息, 消息体 %d 字节"
+        % (",".join(str(x) for x in levels), args.messages, args.payload_size)
+    )
     print("服务器: %s:%d\n" % (args.host, args.port))
 
     rows = []
     raw_rows = []
     for clients in levels:
         print("========== 并发 %d ==========" % clients)
-        stats, total = run_round(args.host, args.port, clients,
-                                 args.messages, args.payload_size, args.timeout)
+        stats, total = run_round(
+            args.host,
+            args.port,
+            clients,
+            args.messages,
+            args.payload_size,
+            args.timeout,
+        )
         row = print_round(clients, stats, total)
         rows.append(row)
         # 收集原始数值,供写 CSV
-        conn_total = (stats.ok_conn + stats.refused +
-                      stats.conn_timeout + stats.conn_other)
+        conn_total = (
+            stats.ok_conn + stats.refused + stats.conn_timeout + stats.conn_other
+        )
         ok_rate = stats.ok_conn * 100.0 / conn_total if conn_total else 0.0
         qps = stats.ok_req / total if total > 0 else 0.0
         avg_ms = stats.latency_sum / stats.ok_req * 1000.0 if stats.ok_req else 0.0
         max_ms = stats.latency_max * 1000.0
-        raw_rows.append((clients, ok_rate, stats.ok_req, total,
-                         qps, avg_ms, max_ms, stats.refused))
+        raw_rows.append(
+            (clients, ok_rate, stats.ok_req, total, qps, avg_ms, max_ms, stats.refused)
+        )
         print()
 
     print("================== 汇总对比 ==================")
-    print("%-8s %-9s %-10s %-10s %-8s %-12s %-12s %-6s" % (
-        "并发数", "成功率", "成功请求", "总耗时(s)", "QPS",
-        "平均延迟(ms)", "最大延迟(ms)", "被拒"))
+    print(
+        "%-8s %-9s %-10s %-10s %-8s %-12s %-12s %-6s"
+        % (
+            "并发数",
+            "成功率",
+            "成功请求",
+            "总耗时(s)",
+            "QPS",
+            "平均延迟(ms)",
+            "最大延迟(ms)",
+            "被拒",
+        )
+    )
     for row in rows:
         print(row)
 
@@ -270,7 +326,7 @@ def main():
     print("\n已记录到 benchmark_log.csv")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
