@@ -1,16 +1,21 @@
 import asyncio
-import math
-import os
-import statistics
 import time
+import math
 
 import benchmarks.config as cfg
-import tests.common as c
+from support.config import HOST, PORT, SERVER_BINARY
+from support.protocol import async_roundtrip
+from support.server import ServerLogMode, running_server
 
 
 def _percentile(values: list[float], p: float) -> float:
-    values.sort()
-    return values[int(len(values) - 1 * p)]
+    if not values:
+        return 0.0
+    if not 0 < p <= 1:
+        raise ValueError(f"percentile must be in (0, 1], got {p}")
+    ordered = sorted(values)
+    index = math.ceil(len(ordered) * p) - 1
+    return ordered[index]
 
 
 async def worker(
@@ -23,7 +28,7 @@ async def worker(
     loop = asyncio.get_running_loop()
     while loop.time() < deadline:
         start = time.perf_counter()
-        received = await c.async_roundtrip(reader, writer, payload)
+        received = await async_roundtrip(reader, writer, payload)
         assert received == payload
         latencies.append((time.perf_counter() - start) * 1000)
 
@@ -31,7 +36,7 @@ async def worker(
 async def bench(client: int) -> None:
     payload = b"P" * cfg.PAYLOAD_SIZE
     connections = await asyncio.gather(
-        *(asyncio.open_connection(c.HOST, c.PORT) for _ in range(client))
+        *(asyncio.open_connection(HOST, PORT) for _ in range(client))
     )
     latencies = []
     loop = asyncio.get_running_loop()
@@ -56,8 +61,11 @@ async def bench(client: int) -> None:
 
 
 async def main() -> None:
-    for clients in cfg.CLIENTS:
-        await bench(clients)
+    if SERVER_BINARY is None:
+        raise RuntimeError("NF_SERVER_BINARY is not set")
+    with running_server(SERVER_BINARY, "-p", str(PORT), log_mode=ServerLogMode.DISCARD):
+        for clients in cfg.CLIENTS:
+            await bench(clients)
 
 
 if __name__ == "__main__":
