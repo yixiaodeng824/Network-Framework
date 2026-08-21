@@ -10,6 +10,7 @@
 #include <csignal>
 #include <fcntl.h>
 #include <vector>
+#include <sys/eventfd.h>
 using namespace std;
 atomic<bool> EpollServer::stop_{ false };
 
@@ -35,7 +36,8 @@ EpollServer::EpollServer(int port, ThreadPool& pool,int heartbeat_timeout=60):po
 		LOG_ERROR("bind failed: %s", strerror(errno));
 		exit(1);
 	}
-	//创建 epoll 句柄
+    wake_up_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    //创建 epoll 句柄
 	epfd_ = epoll_create(1);
 }
 
@@ -92,6 +94,10 @@ void EpollServer::run() {
 					acceptNewClient();
 				continue;
 			}
+            if(fd==wake_up_fd_){
+                handleWakeup();
+                continue;
+            }
             ConnectionId id = makeId(fd);
             if(ev & (EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
 				handleClient(id);
@@ -119,7 +125,14 @@ void EpollServer::start() {
 	ev.events = EPOLLIN | EPOLLONESHOT;
 	ev.data.fd = listen_fd_;
 	epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd_, &ev);
-	signal(SIGINT, handle_signal);
+    //注册一下唤醒事件,不需要oneshot，因为线程不会抢他，wakeupfd原子性
+    epoll_event wake_ev;
+    wake_ev.data.fd = wake_up_fd_;
+    wake_ev.events = EPOLLIN;
+    epoll_ctl(epfd_, EPOLL_CTL_ADD, wake_up_fd_, &wake_ev);
+
+    loop_thread_id = this_thread::get_id();
+    signal(SIGINT, handle_signal);
 	signal(SIGTERM, handle_signal);
 	signal(SIGPIPE, SIG_IGN);
 	run();
@@ -130,7 +143,7 @@ void EpollServer::handle_signal(int) {
 }
 
 void  EpollServer::handleClient(ConnectionId id) {
-	pool_.post([this, id] {
+//	pool_.post([this, id] {
         int fd = id.fd;
         //待际不对直接退出
         {
@@ -177,36 +190,41 @@ void  EpollServer::handleClient(ConnectionId id) {
 				it->second.touchActive();//刷新一下活跃时间
 				msgs = move(it->second.processBufferedData());
 				frame_error = it->second.hasFrameError();
-			}
+			}   
 			if (frame_error) {
 				closeConnection(fd);
-				return;
+				return; 
 			}
 			for (auto& msg : msgs) {
-				if (handler_) handler_(*this, fd, msg);    //锁外触发回调
+                if (handler_) handler_(*this, id, msg);    //锁外触发回调
 			}
-			SendResult result{ SendResult::Pending };//消息一次是不是全发完了，全发完就直接无视了，
-			//没全发完登记成epollout等handlewrite继续发
-			{
-				lock_guard<mutex> lck(client_mutex);
-				auto it = fd_list.find(fd);
-				if (it == fd_list.end()) return;
-				result = it->second.sendReadyMessage();    // 收尾发送
-			}
+            SendResult result{SendResult::Pending}; // 消息一次是不是全发完了，全发完就直接无视了，
+            // 没全发完登记成epollout等handlewrite继续发
+            int fd = id.fd;
+            {
+                lock_guard<mutex> lck(client_mutex);
+                auto it = fd_list.find(fd);
+                if (it == fd_list.end() || it->second.generation() != id.generation)
+                    return;
+                result = it->second.sendReadyMessage(); // 收尾发送
+            }
 
-			epoll_event nev;
-			nev.data.fd = fd;
-			if (result == SendResult::SentAll) {
-				nev.events = EPOLLIN | EPOLLONESHOT;
-			}
-			else if (result == SendResult::Pending) {
-				nev.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT;
-			}
-			else {
-				closeConnection(fd);
-			}
-			epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
-		}
+            epoll_event nev;
+            nev.data.fd = fd;
+            if (result == SendResult::SentAll)
+            {
+                nev.events = EPOLLIN | EPOLLONESHOT;
+            }
+            else if (result == SendResult::Pending)
+            {
+                nev.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT;
+            }
+            else
+            {
+                closeConnection(fd);
+            }
+            epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+        }
 		else {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				// 没数据,忽略;但 EPOLLONESHOT 触发过一次,要重新 MOD 回 EPOLLIN
@@ -220,11 +238,11 @@ void  EpollServer::handleClient(ConnectionId id) {
 			}
 		}
 
-	});
+	//});
 }
 
 void EpollServer::handleWrite(ConnectionId id) {
-	pool_.post([this, id] {
+	//pool_.post([this, id] {
         int fd=id.fd;
         {
             lock_guard<mutex> lck(client_mutex);
@@ -265,7 +283,7 @@ void EpollServer::handleWrite(ConnectionId id) {
 			return;
 		}
 		epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
-		});
+	//	});
 }
 
 void EpollServer::closeConnection(int fd) {
@@ -323,15 +341,50 @@ void EpollServer::acceptNewClient() {//调回调函数，确定fd对应的业务逻辑
 	epoll_ctl(epfd_, EPOLL_CTL_MOD,listen_fd_ , &nev1);
 }
 
-void EpollServer::setMessageHandler(std::function<void(EpollServer&, int, const std::string&)> f) {
+void EpollServer::setMessageHandler(std::function<void(EpollServer&, ConnectionId, const std::string&)> f) {
 	handler_ = move(f);
 }
 
-void EpollServer::sendTo(int fd, const string& msg) {
-	lock_guard<mutex> lck(client_mutex);       
-	auto it = fd_list.find(fd);                 
-	if (it != fd_list.end())                    
-		it->second.sendMsgToSendBuf(msg);                //塞进那个连接的缓冲
+void EpollServer::sendInLoop(ConnectionId id, const string& msg){
+    int fd = id.fd;
+    lock_guard<mutex> lck(client_mutex);
+    auto it = fd_list.find(fd);
+    if (it == fd_list.end() || it->second.generation() != id.generation)
+        return;
+    it->second.sendMsgToSendBuf(msg); // 只塞缓冲,不真发
+}
+
+void EpollServer::queueInLoop(std::function<void()> cb){
+    {
+        lock_guard<mutex> lck(workers_results_mutex_);
+        workers_results_.push_back(cb);
+    }
+    uint64_t one = 1;
+    write(wake_up_fd_, &one, sizeof(one));
+}
+
+void EpollServer::handleWakeup(){
+    uint64_t dummy;
+    while(read(wake_up_fd_,&dummy,sizeof(dummy)) > 0){}
+    deque<function<void()>> dq;//临时信箱，一次全抱走，不要一次一次pop
+    {
+        lock_guard<mutex> lck(workers_results_mutex_);
+        dq.swap(workers_results_);
+    }
+    for(auto& it:dq){
+        it();
+    }
+}
+
+void EpollServer::sendTo(ConnectionId id, const string &msg)
+{
+    if(isInLoopThread()){//小型网络io直接发
+        sendInLoop(id, msg);
+    }
+    else{//线程池给过来的消息先扔到队列在发
+        queueInLoop([id, msg,this]()
+                    { sendInLoop(id, msg); });
+    }
 }
 
 void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
@@ -362,6 +415,7 @@ void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
 		closeConnection(fd);
 	}
 }
+
 EpollServer::~EpollServer(){
 	close(epfd_);
 	close(listen_fd_);

@@ -8,6 +8,9 @@ import time
 import benchmarks.config as cfg
 import tests.common as c
 
+# 备注:压测前用环境变量注明本次条件,如 NF_NOTE="listen128+4worker"
+NOTE = os.environ.get("NF_NOTE", "")
+
 
 def _percentile(values: list[float], p: float) -> float:
     if not values:
@@ -29,6 +32,7 @@ def _append_to_csv(
     p50: float,
     p95: float,
     p99: float,
+    note: str = "",
 ) -> None:
     path = "benchmark_log.csv"
     new_file = not os.path.exists(path)
@@ -38,7 +42,7 @@ def _append_to_csv(
             writer.writerow([
                 "时间", "并发", "成功率%", "成功请求", "总耗时(s)",
                 "QPS", "平均延迟(ms)", "最大延迟(ms)", "被拒",
-                "消息/连接", "消息体(字节)", "p50(ms)", "p95(ms)", "p99(ms)",
+                "消息/连接", "消息体(字节)", "p50(ms)", "p95(ms)", "p99(ms)", "备注",
             ])
         writer.writerow([
             time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -55,6 +59,7 @@ def _append_to_csv(
             f"{p50:.2f}",
             f"{p95:.2f}",
             f"{p99:.2f}",
+            note,
         ])
 
 
@@ -105,7 +110,7 @@ async def bench(client: int) -> None:
         f"p95={p95:.2f}ms "
         f"p99={p99:.2f}ms"
     )
-    _append_to_csv(client, success, elapsed, qps, avg_ms, max_ms, p50, p95, p99)
+    _append_to_csv(client, success, elapsed, qps, avg_ms, max_ms, p50, p95, p99, NOTE)
 
 
 async def main() -> None:
