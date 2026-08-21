@@ -1,14 +1,14 @@
-# Visual Studio ÁÙÊ±ÎÄ¼ş
+# Visual Studio ä¸´æ—¶æ–‡ä»¶
 .vs/
 *.user
 *.suo
 *.vcxproj.*
 *.sln
 
-# vscode ÁÙÊ±ÎÄ¼ş
+# vscode ä¸´æ—¶æ–‡ä»¶
 .vscode/
 
-# ±àÒë²úÎï
+# ç¼–è¯‘äº§ç‰©
 bin/
 lib/
 obj/
@@ -18,17 +18,25 @@ x64/
 Debug/
 Release/
 *.out
+build/
 
-# ±àÒëÖĞ¼äÎÄ¼ş
+# ç¼–è¯‘ä¸­é—´æ–‡ä»¶
 *.obj
 *.pdb
 *.ilk
 *.log
 
-# Python »º´æ
+# Python ç¼“å­˜
 __pycache__/
 *.pyc
+.pytest_cache/
 
-# ¸öÈËÑ§Ï°±Ê¼Ç(²»Èë¿â)
+# ä¸ªäººå­¦ä¹ ç¬”è®°
 network_notes.md
 docs/
+
+# å‹æµ‹æ•°æ®
+*.csv
+
+# VMware å…±äº«æ–‡ä»¶å¤¹ä¸´æ—¶æ–‡ä»¶
+.fuse_hidden*

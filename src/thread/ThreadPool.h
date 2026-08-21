@@ -5,6 +5,7 @@
 #include <memory>
 #include <future>
 #include <atomic>
+#include <utility>
 class ThreadPool
 {
 public:
@@ -19,22 +20,18 @@ public:
 
         msg_que_.push(
             [prom, f = std::forward<Func>(f)]() mutable {
-                if constexpr (std::is_void_v<Ret>) {
-                    f();                          // 任务没结果:干就完了
-                    prom->set_value();           // void 版:空手交付
-                }
-                else {
                     prom->set_value(f());        // 任务有结果:顺手把结果带上
-                }
             }
         );
-
         return fut;
     }
-
+    template<typename Func>
+    void post(Func&& f) {
+        msg_que_.push([f = std::forward<Func>(f)]()mutable {f(); });//允许捕获之后修改自己的变量
+    }
     void close();
 private:
-	MessageQueue msg_que_;
+    MessageQueue msg_que_{65536};
 	std::vector<std::unique_ptr<WorkThread>> workers_;
     std::atomic<bool> exit_{false};
 };
