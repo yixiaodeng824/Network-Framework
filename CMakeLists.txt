@@ -37,12 +37,6 @@ if(BUILD_TESTING)
     )
 endif()
 
-add_custom_target(run
-    COMMAND $<TARGET_FILE:server>
-    DEPENDS server
-    USES_TERMINAL
-)
-
 add_custom_target(bench
     COMMAND ${CMAKE_COMMAND} -E env
         NF_SERVER_BINARY=$<TARGET_FILE:server>

@@ -93,17 +93,23 @@ TCP 是字节流,本身没有"消息"边界——一次 `recv` 可能只读到�
 
 在 Linux 下安装好 cmake，通过 `cmake --version` 验证安装。
 
-在项目根目录执行 `build.sh` 编译，产物是 `build/server`。
+在项目根目录执行 `make build` 编译，产物是 `build/debug/server`。
 
 通过如下命令运行：
 
 ```bash
-./build.sh
-./run.sh          # 默认端口 8888
-./run.sh -p 9090  # 换端口
-./run.sh -t 4     # 指定线程数(默认 0 = 自动用 CPU 核数)
-./run.sh -h 30    # 心跳超时(秒,默认 60), 不是 help
+make run                  # 默认端口 8888
+make run ARGS="-p 9090"   # 换端口
+make run ARGS="-t 4"      # 指定线程数(默认 0 = 自动用 CPU 核数)
+make run ARGS="-h 30"     # 心跳超时(秒,默认 60), 不是 help
+make run ARGS="-p 9090 -t 4 -h 30"
+
+# 底层可执行文件依然保持原用法
+make build
+./build/debug/server -p 9090 -t 4 -h 30
 ```
+
+.env 文件用于固定 test 和 bench 的环境（HOST, PORT, TIMEOUT），ARGS 用于设置服务器参数
 
 ## 测试
 

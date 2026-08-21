@@ -3,6 +3,7 @@
 NF_HOST ?= 127.0.0.1
 NF_PORT ?= 8888
 NF_TIMEOUT ?= 3
+ARGS ?=
 
 export NF_HOST NF_PORT NF_TIMEOUT
 
@@ -18,7 +19,7 @@ build: configure-debug
 	cmake --build --preset debug --parallel -- --no-print-directory
 
 run: configure-debug
-	cmake --build --preset debug --target run
+	./build/debug/server $(ARGS)
 
 test: build
 	ctest --preset debug --output-on-failure
