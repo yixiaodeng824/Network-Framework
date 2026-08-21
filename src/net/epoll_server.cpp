@@ -47,7 +47,6 @@ void EpollServer::epollserver_exit() {
 	pool_.close();
 	//clients 需要线程安全,所以加锁
 	{
-		lock_guard<mutex>	cltmtx(client_mutex);
 		for (auto& fd : fd_list) {
 			close(fd.first);
 		}
@@ -63,7 +62,6 @@ void EpollServer::heartBeatCheck() {
 	time_t now = time(nullptr);
 	vector<int> timeout_fds;
 	{
-		lock_guard<mutex> lck(client_mutex);
 		for (auto& [fd, conn] : fd_list) {
 			if (conn.isTimeout(now, heartbeat_timeout_)) {
 				timeout_fds.push_back(fd);
@@ -147,7 +145,6 @@ void  EpollServer::handleClient(ConnectionId id) {
         int fd = id.fd;
         //待际不对直接退出
         {
-            lock_guard<mutex> lck(client_mutex);
             auto it = fd_list.find(fd);
             if(it==fd_list.end()||it->second.generation()!=id.generation)
                 return;
@@ -157,7 +154,6 @@ void  EpollServer::handleClient(ConnectionId id) {
 		if (len == 0) {//关闭fd，可能fd对应的缓冲区仍然有东西，需要全发完再关
 			SendResult result;
 			{
-				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
                 if (it == fd_list.end() || it->second.generation() != id.generation)
                     return;
@@ -182,7 +178,6 @@ void  EpollServer::handleClient(ConnectionId id) {
 			vector<string> msgs;
 			bool frame_error = false;
 			{
-				lock_guard<mutex> lck(client_mutex);
 				auto it = fd_list.find(fd);
                 if (it == fd_list.end() || it->second.generation() != id.generation)
                     return;
@@ -202,7 +197,6 @@ void  EpollServer::handleClient(ConnectionId id) {
             // 没全发完登记成epollout等handlewrite继续发
             int fd = id.fd;
             {
-                lock_guard<mutex> lck(client_mutex);
                 auto it = fd_list.find(fd);
                 if (it == fd_list.end() || it->second.generation() != id.generation)
                     return;
@@ -245,7 +239,6 @@ void EpollServer::handleWrite(ConnectionId id) {
 	//pool_.post([this, id] {
         int fd=id.fd;
         {
-            lock_guard<mutex> lck(client_mutex);
             auto it = fd_list.find(fd);
             if (it == fd_list.end() || it->second.generation() != id.generation)
                 return;
@@ -253,7 +246,6 @@ void EpollServer::handleWrite(ConnectionId id) {
         SendResult result;
 		bool closing = false;
 		{
-			lock_guard<mutex> lck(client_mutex);
 			auto it = fd_list.find(fd);
             if (it == fd_list.end() || it->second.generation() != id.generation)
                 return;
@@ -290,14 +282,12 @@ void EpollServer::closeConnection(int fd) {
 	LOG_INFO("close connection, fd: %d", fd);
 	epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
 	{
-		lock_guard<mutex> mtx(client_mutex);
 		fd_list.erase(fd);
 	}
 	close(fd);
 }
 
 ConnectionId EpollServer::makeId(int fd){
-    lock_guard<mutex> lck(client_mutex);
     auto it = fd_list.find(fd);
     if(it!=fd_list.end()){
         return {fd, it->second.generation()};
@@ -318,7 +308,6 @@ void EpollServer::acceptNewClient() {//调回调函数，确定fd对应的业务逻辑
 		}
 		{
 			//维护客户连接
-			lock_guard<mutex> clmtx(client_mutex);
 			int flag = fcntl(client_fd, F_GETFL, 0);
 			fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//设置客户非阻塞，为了处理在send时候的阻塞问题
 
@@ -347,7 +336,6 @@ void EpollServer::setMessageHandler(std::function<void(EpollServer&, ConnectionI
 
 void EpollServer::sendInLoop(ConnectionId id, const string& msg){
     int fd = id.fd;
-    lock_guard<mutex> lck(client_mutex);
     auto it = fd_list.find(fd);
     if (it == fd_list.end() || it->second.generation() != id.generation)
         return;
@@ -390,7 +378,6 @@ void EpollServer::sendTo(ConnectionId id, const string &msg)
 void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
 	std::vector<int> toClose;
 	{
-		lock_guard<mutex> lck(client_mutex);
 		for (auto& it : fd_list) {
 			if (it.first == exptr_fd)	continue;
 			it.second.sendMsgToSendBuf(msg);

@@ -50,7 +50,6 @@ private:
     ThreadPool& pool_;
 	epoll_event events_[64];
 	std::map<int, Connection> fd_list;
-	std::mutex client_mutex;
 	int heartbeat_timeout_;
 	std::function<void(EpollServer&, ConnectionId , const std::string&)>	handler_;
 
