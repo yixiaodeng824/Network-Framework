@@ -38,10 +38,9 @@ docs/
 # 压测数据
 *.csv
 
-# python 环境
+# 个人环境
 .venv/
-
-# agent 配置
+.env
 skills-lock.json
 .agents/
 AGENTS.md
