@@ -37,3 +37,11 @@ docs/
 
 # 压测数据
 *.csv
+
+# python 环境
+.venv/
+
+# agent 配置
+skills-lock.json
+.agents/
+AGENTS.md
