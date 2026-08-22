@@ -1,76 +1,74 @@
-# -*- coding: gbk -*-
-import time
 from concurrent.futures import ThreadPoolExecutor
 
-from tests.common import connect, roundtrip, build_msg, recv_msg, send_msg
+import pytest
 
-# ==== ²âÊÔ1: µ¥ÌõÏûÏ¢ ====
-def test_single_message() -> None:
-    with connect() as sock:
-        assert roundtrip(sock, b'hello') == b'hello'
+from support.protocol import build_msg, recv_msg, roundtrip, send_msg
 
-# ==== ²âÊÔ2: Õ³°ü(Ò»´Î·¢Á½Ìõ) ====
-def test_multiple_messages() -> None:
-    messages = [b'hello', b'world']
-    with connect() as sock:
-        sock.sendall(b''.join(build_msg(msg) for msg in messages))    
-        received = [recv_msg(sock) for _ in messages]
-    assert received == messages
-
-# ==== ²âÊÔ3: °ë°ü/´óÏûÏ¢(3000×Ö½Ú,·ÖÁ½´Î·¢) ====
-HALF_PACKET_SIZE = 3000
-HALF_PACKET_SPLIT = 1024
-HALF_PACKET_DELAY = 0.3
-def test_partial_message() -> None:
-    payload = b'A' * HALF_PACKET_SIZE
-    packet = build_msg(payload)
-    with connect() as sock:
-        sock.sendall(packet[:HALF_PACKET_SPLIT])
-        time.sleep(HALF_PACKET_DELAY)
-        sock.sendall(packet[HALF_PACKET_SPLIT:])
-        assert recv_msg(sock) == payload 
-
-# ==== ²âÊÔ4: 3¸öÓÃ»§Í¬Ê±·¢ÏûÏ¢ ====
-def echo_client(payload: bytes) -> bytes:
-    with connect() as sock:
-        return roundtrip(sock, payload)
-
-def test_concurrent_clients() -> None:
-    payloads = [
-        b'A' * 100,
-        b'B' * 200,
-        b'C' * 50,
-    ]
-    with ThreadPoolExecutor(max_workers=len(payloads)) as pool:
-        received = list(pool.map(echo_client, payloads))
-    assert received == payloads
-
-# ==== ²âÊÔ5: ·¢ËÍ»º³å¡ª¡ªÁ¬Ðø¶àÌõºÏ²¢»ØÏÔ ====
-# Á¬ÐøÆ´½Ó¶à¸öÍêÕûÐ­ÒéÖ¡ºóÒ»´ÎÐ´Èë TCP£¬
-# ÑéÖ¤·þÎñÆ÷ÄÜ¹»ÕýÈ·²ð·Ö¶àÌõÏûÏ¢£¬²¢°´Ô­Ë³ÐòÍêÕû»ØÏÔ¡£
-BATCH_COUNT = 10
-def test_batch_messages() -> None:
-    messages = [f'batch-{i}'.encode() * 20 for i in range(BATCH_COUNT)]
-    with connect() as sock:
-        sock.sendall(b''.join(build_msg(msg) for msg in messages))
-        received = [recv_msg(sock) for _ in messages]
-    assert received == messages
-
-# ==== ²âÊÔ6: ´óÏûÏ¢»ØÏÔ(200KB,Ô¶³¬ recv µÄ 1024 »º³å) ====
-# ·þÎñÆ÷Òª¶à´Î recv Æ´½ø recv_buffer_,²ð°üºóÆ´½ø send_buffer_ ÔÙ·¢»Ø
+BATCH_COUNT = 100
 LARGE_MESSAGE_SIZE = 200_000
-def test_large_message() -> None:
-    payload = b'B' * LARGE_MESSAGE_SIZE
-    with connect() as sock:
+CONCURRENT_CLIENTS = 8
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"",
+        b"hello",
+        bytes(range(256)),
+        b"\x00\xff\x00binary\x00payload\xff",
+    ],
+)
+def test_roundtrip_payload(server, payload: bytes) -> None:
+    """echo åº”è¯¥åŽŸæ ·è¿”å›žä»»æ„ bytesï¼Œè€Œä¸åªæ˜¯æ–‡æœ¬ã€‚"""
+    with server.connect() as sock:
         assert roundtrip(sock, payload) == payload
 
-# ==== ²âÊÔ7: 100ÌõÐ¡ÏûÏ¢Á¬·¢,ÑéÖ¤Ë³Ðò ====
-ORDERED_MESSAGE_COUNT = 100
-def test_message_order() -> None:
-    messages = [f'ping-{i}'.encode() for i in range(ORDERED_MESSAGE_COUNT)]
-    with connect() as sock:
-        for msg in messages:
-            send_msg(sock, msg)
+
+def test_multiple_messages_in_single_write(server) -> None:
+    """ä¸€æ¬¡ write ä¸­åŒ…å«å¤šå¸§æ—¶ï¼ŒæœåŠ¡å™¨å¿…é¡»æ­£ç¡®æ‹†åŒ…å¹¶ä¿æŒé¡ºåºã€‚"""
+    messages = [b"hello", b"world", b"third"]
+
+    with server.connect() as sock:
+        sock.sendall(b"".join(build_msg(msg) for msg in messages))
         received = [recv_msg(sock) for _ in messages]
+
     assert received == messages
 
+
+def test_many_messages_preserve_order(server) -> None:
+    """è¿žç»­å‘é€å¤šæ¡æ¶ˆæ¯åŽï¼Œå“åº”é¡ºåºä¸èƒ½é”™ä¹±ã€‚"""
+    messages = [f"ping-{i}".encode() for i in range(BATCH_COUNT)]
+
+    with server.connect() as sock:
+        for message in messages:
+            send_msg(sock, message)
+
+        received = [recv_msg(sock) for _ in messages]
+
+    assert received == messages
+
+
+def test_large_message(server) -> None:
+    """æ¶ˆæ¯è¿œå¤§äºŽ server å•æ¬¡ recv ç¼“å†²åŒºæ—¶ä»åº”å®Œæ•´å›žæ˜¾ã€‚"""
+    payload = b"L" * LARGE_MESSAGE_SIZE
+
+    with server.connect() as sock:
+        assert roundtrip(sock, payload) == payload
+
+
+def test_concurrent_clients(server) -> None:
+    """å¤šä¸ªè¿žæŽ¥å¹¶å‘æ”¶å‘æ—¶ï¼Œå„è¿žæŽ¥çš„æ•°æ®ä¸èƒ½ä¸²çº¿ã€‚"""
+
+    def echo_client(index: int) -> bytes:
+        payload = f"client-{index}:".encode() + bytes([index]) * (1024 + index * 17)
+        with server.connect() as sock:
+            return roundtrip(sock, payload)
+
+    with ThreadPoolExecutor(max_workers=CONCURRENT_CLIENTS) as pool:
+        actual = list(pool.map(echo_client, range(CONCURRENT_CLIENTS)))
+
+    expected = [
+        f"client-{i}:".encode() + bytes([i]) * (1024 + i * 17)
+        for i in range(CONCURRENT_CLIENTS)
+    ]
+    assert actual == expected

@@ -1,6 +1,6 @@
-import struct
 import asyncio
 import socket
+import struct
 
 # ========================================
 # 协议
