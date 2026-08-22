@@ -3,11 +3,12 @@
 NF_HOST ?= 127.0.0.1
 NF_PORT ?= 8888
 NF_TIMEOUT ?= 3
+PYTHON ?= python3
 ARGS ?=
 
 export NF_HOST NF_PORT NF_TIMEOUT
 
-.PHONY: configure-debug configure-release build run test bench
+.PHONY: configure-debug configure-release build run test bench bench-all
 
 configure-debug:
 	cmake --preset debug
@@ -26,3 +27,6 @@ test: build
 
 bench: configure-release
 	cmake --build --preset release --target bench --parallel -- --no-print-directory
+
+bench-all:
+	$(PYTHON) -m benchmarks.worktree

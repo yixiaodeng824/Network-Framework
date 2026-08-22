@@ -32,7 +32,9 @@ if(BUILD_TESTING)
         NAME integration
         COMMAND ${CMAKE_COMMAND} -E env
             NF_SERVER_BINARY=$<TARGET_FILE:server>
-            ${Python3_EXECUTABLE} -m pytest tests/integration
+            ${Python3_EXECUTABLE} -m pytest
+                tests/integration
+                tests/benchmarks
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
 endif()

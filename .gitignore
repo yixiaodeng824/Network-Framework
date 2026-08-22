@@ -37,6 +37,7 @@ docs/
 
 # 压测数据
 *.csv
+benchmark-results/
 
 # 个人环境
 .venv/
