@@ -1,4 +1,5 @@
 #include "epoll_server.h"
+#include "main_reactor.h"
 #include "Logger.h"
 #include <cstdlib>
 #include <cstring>
@@ -37,11 +38,11 @@ int main(int argc,char* argv[]) {
 			}
 		}
 	}
-	ThreadPool tp(threadnum);
-	EpollServer es(port, tp,heartbeats);
-	es.setMessageHandler([](EpollServer& server, ConnectionId id, const std::string& msg) {
-		server.sendTo(id,msg);
-		});
-	es.start();
-	return 0;
+    ThreadPool tp(threadnum);
+    int sub_count = 2; // sub 个数,先写死跑通,以后加 -s 参数
+    MainReactor main(port, tp, heartbeats, sub_count);
+    main.setMessageHandler([](EpollServer &server, ConnectionId id, const std::string &msg)
+                           { server.sendTo(id, msg); });
+    main.start();
+    return 0;
 }

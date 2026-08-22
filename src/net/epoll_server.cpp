@@ -14,31 +14,12 @@
 using namespace std;
 atomic<bool> EpollServer::stop_{ false };
 
-EpollServer::EpollServer(int port, ThreadPool& pool,int heartbeat_timeout=60):port_(port), pool_(pool),heartbeat_timeout_(heartbeat_timeout) {
-	//创建监听套接字
-	listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-	//把listen_fd_也设置为非阻塞
-	int fl = fcntl(listen_fd_, F_GETFL,0);
-	fcntl(listen_fd_, F_SETFL, fl | O_NONBLOCK);
-
-	if (listen_fd_ < 0) { LOG_ERROR("socket failed: %s", strerror(errno)); exit(1); }
-	//确定要绑定的端口
-	sockaddr_in addr;
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_port = htons(port);
-	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = INADDR_ANY;
-	int opt = 1;
-	//设置套接字选项,允许地址复用
-	setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-	//绑定端口
-	if (bind(listen_fd_, (sockaddr*) &addr, sizeof(addr)) < 0) {
-		LOG_ERROR("bind failed: %s", strerror(errno));
-		exit(1);
-	}
-    wake_up_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout = 60) : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout)
+{
+    //从epoll不需要监听事件，等mainreactor分发
     //创建 epoll 句柄
-	epfd_ = epoll_create(1);
+	epfd_ = epoll_create(1);    
+    wake_up_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 }
 
 void EpollServer::epollserver_exit() {
@@ -87,11 +68,6 @@ void EpollServer::run() {
 		for (int i = 0;i < n;i++) {
 			int fd = events_[i].data.fd;
 			uint32_t ev = events_[i].events;
-			if (fd == listen_fd_) {
-				if(ev& (EPOLLIN | EPOLLERR | EPOLLHUP))
-					acceptNewClient();
-				continue;
-			}
             if(fd==wake_up_fd_){
                 handleWakeup();
                 continue;
@@ -115,14 +91,6 @@ void EpollServer::run() {
 }
 
 void EpollServer::start() {
-	//初始化
-	listen(listen_fd_, 128);// backlog=排队上限,加大防突发连接积压
-	LOG_INFO("start listening on port %d", port_);
-	//先把监听套接字加进epoll事件列表
-	epoll_event ev;
-	ev.events = EPOLLIN | EPOLLONESHOT;
-	ev.data.fd = listen_fd_;
-	epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd_, &ev);
     //注册一下唤醒事件,不需要oneshot，因为线程不会抢他，wakeupfd原子性
     epoll_event wake_ev;
     wake_ev.data.fd = wake_up_fd_;
@@ -295,39 +263,17 @@ ConnectionId EpollServer::makeId(int fd){
     return {fd, 0};
 }
 
-void EpollServer::acceptNewClient() {//调回调函数，确定fd对应的业务逻辑
-	while (true) {
-		int client_fd = accept(listen_fd_, nullptr, nullptr);
-
-		if (client_fd < 0) {
-			//和发送的时候的三态处理类似
-			if (errno == EINTR)	continue;//被信号打断，重试
-			if (errno == EAGAIN || errno == EWOULDBLOCK)	break;//接完了，退出
-			LOG_ERROR("accept failed: %s", strerror(errno));//出错
-			return;
-		}
-		{
-			//维护客户连接
-			int flag = fcntl(client_fd, F_GETFL, 0);
-			fcntl(client_fd, F_SETFL, flag | O_NONBLOCK);//设置客户非阻塞，为了处理在send时候的阻塞问题
-
-            Connection conn(client_fd);
-            conn.setGeneration(next_generation_.fetch_add(1));
-            fd_list.insert({client_fd, move(conn)});
-
-            //fd_list.insert({ client_fd,Connection(client_fd) });
-		}
-		LOG_DEBUG("new client fd=%d", client_fd);
-		epoll_event nev;
-		nev.data.fd = client_fd;
-		nev.events = EPOLLIN | EPOLLONESHOT;
-		epoll_ctl(epfd_, EPOLL_CTL_ADD, client_fd, &nev);
-	}
-	
-	epoll_event nev1;
-	nev1.data.fd = listen_fd_;
-	nev1.events = EPOLLIN | EPOLLONESHOT;
-	epoll_ctl(epfd_, EPOLL_CTL_MOD,listen_fd_ , &nev1);
+void EpollServer::acceptNewConnection(int fd){
+    int flag = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flag|O_NONBLOCK);
+    Connection conn(fd);
+    conn.setGeneration(next_generation_.fetch_add(1));
+    fd_list.insert({fd, move(conn)});
+    LOG_DEBUG("new client fd=%d", fd);
+    epoll_event ev;
+    ev.data.fd = fd;
+    ev.events = EPOLLIN | EPOLLONESHOT;
+    epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev);
 }
 
 void EpollServer::setMessageHandler(std::function<void(EpollServer&, ConnectionId, const std::string&)> f) {
@@ -370,8 +316,12 @@ void EpollServer::sendTo(ConnectionId id, const string &msg)
         sendInLoop(id, msg);
     }
     else{//线程池给过来的消息先扔到队列在发
+        static std::once_flag flag;
+        std::call_once(flag, []
+                       { LOG_WARN(">>> sendTo 走了跨线程投递!isInLoopThread 判断有问题"); });
         queueInLoop([id, msg,this]()
                     { sendInLoop(id, msg); });
+        
     }
 }
 
@@ -405,5 +355,5 @@ void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
 
 EpollServer::~EpollServer(){
 	close(epfd_);
-	close(listen_fd_);
+	close(wake_up_fd_);
 }

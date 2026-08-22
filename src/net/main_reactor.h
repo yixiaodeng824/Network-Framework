@@ -1,0 +1,29 @@
+#pragma once
+#include "ThreadPool.h"
+#include "epoll_server.h"
+#include <functional>
+#include <vector>
+#include <thread>
+#include <memory>
+class MainReactor{
+public:
+    MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count);
+    void start();
+    void setMessageHandler(std::function<void(EpollServer &, ConnectionId, const std::string &)> f);
+    
+    ~MainReactor();
+
+private:
+    void acceptLoop(); // 主循环，分发fd到subfdlist
+    int listen_fd;
+    int epfd_;
+    int port_;
+    int heartbeat_timeout_;
+    int sub_count_;
+    epoll_event events_[64];
+    ThreadPool &pool_;
+    std::vector<std::thread> sub_epoll_threads_;//给sub分线程，按照下标对齐
+    std::vector<std::unique_ptr<EpollServer>> subs_;//包含的sub
+    int run_robin_{0};//轮询计数器
+    std::function<void(EpollServer &, ConnectionId, const std::string &)> handler_;
+};

@@ -12,7 +12,7 @@ add_library(network_framework
     src/net/connection.cpp
 
     src/log/Logger.cpp
-
+    src/net/main_reactor.cpp 
     src/thread/MessageQueue.cpp
     src/thread/ThreadPool.cpp
     src/thread/work_thread.cpp
