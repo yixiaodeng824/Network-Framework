@@ -7,7 +7,7 @@
 #include <memory>
 class MainReactor{
 public:
-    MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count);
+    MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count, bool affinity);
     void start();
     void setMessageHandler(std::function<void(EpollServer &, ConnectionId, const std::string &)> f);
     
@@ -20,6 +20,7 @@ private:
     int port_;
     int heartbeat_timeout_;
     int sub_count_;
+    bool affinity_{false};//绑核:accept 线程绑核 0,sub 线程依次绑核 1..N
 	epoll_event events_[1024];
     ThreadPool &pool_;
     std::vector<std::thread> sub_epoll_threads_;//给sub分线程，按照下标对齐

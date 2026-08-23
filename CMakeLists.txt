@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 add_library(network_framework
     src/net/epoll_server.cpp
     src/net/connection.cpp
+    src/net/io_uring_server.cpp
 
     src/log/Logger.cpp
     src/net/main_reactor.cpp 

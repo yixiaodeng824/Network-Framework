@@ -8,9 +8,19 @@
 #include <unistd.h>
 #include <cstring>
 #include <errno.h>
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
 using namespace std;
-MainReactor::MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count):
-port_(port), pool_(thread_pool), heartbeat_timeout_(heartbeat_timeout), sub_count_(sub_count)
+
+static void pin_to_cpu(int cpu) {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(cpu, &set);
+    pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+}
+MainReactor::MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count, bool affinity):
+port_(port), pool_(thread_pool), heartbeat_timeout_(heartbeat_timeout), sub_count_(sub_count), affinity_(affinity)
 {
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     int fl = fcntl(listen_fd, F_GETFL, 0);
@@ -32,11 +42,15 @@ port_(port), pool_(thread_pool), heartbeat_timeout_(heartbeat_timeout), sub_coun
 }
 
 void MainReactor::start(){
+    if (affinity_) {
+        int ncpu = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+        pin_to_cpu(0);//accept 主线程绑核 0
+    }
     listen(listen_fd, 128);
     LOG_INFO("start listening on port %d, sub_count=%d", port_, sub_count_);
     epoll_event nev;
     nev.data.fd = listen_fd;
-    nev.events = EPOLLIN | EPOLLONESHOT;
+    nev.events = EPOLLIN;
     epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd, &nev);
 
     for (int i = 0; i < sub_count_;i++){
@@ -45,7 +59,13 @@ void MainReactor::start(){
         subs_[i]->setMessageHandler(handler_);
         //分配线程，启动sub
         sub_epoll_threads_.emplace_back([this, i]
-                                     { subs_[i]->start(); });
+                                     {
+                                         if (affinity_) {
+                                             int ncpu = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+                                             pin_to_cpu(1 + (i % (ncpu > 1 ? ncpu - 1 : 1)));//每个 sub 线程绑独立核
+                                         }
+                                         subs_[i]->start();
+                                     });
     }
     //就是run
     acceptLoop();
@@ -86,10 +106,6 @@ void MainReactor::acceptLoop(){
                                             });
                     LOG_DEBUG("sub %d new client fd=%d", idx, client_fd);
                 }
-                epoll_event nev; // 重新武装门
-                nev.data.fd = listen_fd;
-                nev.events = EPOLLIN | EPOLLONESHOT;
-                epoll_ctl(epfd_, EPOLL_CTL_MOD, listen_fd, &nev);
             }
         }
     }

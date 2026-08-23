@@ -37,6 +37,8 @@ public:
     size_t sendBufferSize() const { return send_buffer_.size(); }//发送缓冲当前字节数(批量发送用)
     bool isPendingBatch() const { return pending_batch_; }//本批次是否已标记待批量发送
     void setPendingBatch(bool v) { pending_batch_ = v; }
+    bool isWriteWaiting() const { return write_waiting_; }//当前是否挂了 EPOLLOUT(ET 下 MOD 只在状态变化时发生)
+    void setWriteWaiting(bool v) { write_waiting_ = v; }
     bool batchHint() const { return batch_hint_; }//本批次拆出多条消息时提示批量发送
     void setBatchHint(bool v) { batch_hint_ = v; }
 
