@@ -31,10 +31,16 @@ std::vector<std::string> Connection::processBufferedData() {
             //解析content-len
             size_t content_len = 0;
             for (size_t i = 0; i + 14 < remain;i++){
-                if(strncasecmp(data+i,"Content-Length",15)==0){
+                if(strncasecmp(data+i,"Content-Length",14)==0){
                     content_len = atoi(data + i + 15);
                     break;
                 }
+            }
+            if(content_len>kMaxFrameSize){
+                frame_error_ = true;
+                recv_buffer_.clear();
+                recv_idx_ = 0;
+                break;
             }
             if(remain < content_len + header_len)   break;//半包
             string msg = recv_buffer_.substr(recv_idx_, content_len + header_len);
