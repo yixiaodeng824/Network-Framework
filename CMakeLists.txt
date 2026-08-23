@@ -71,3 +71,15 @@ add_custom_target(bench
 
     USES_TERMINAL
 )
+add_custom_target(bench_mp
+    COMMAND
+        \ -E env
+        NF_SERVER_BINARY=\$<TARGET_FILE:server>
+                -m benchmarks.echo_mp
+
+    DEPENDS server
+
+    WORKING_DIRECTORY
+        
+    USES_TERMINAL
+)

@@ -34,12 +34,19 @@ public:
     void setGeneration(uint64_t g) { generation_ = g; } // 发牌时写入代际
     // connection.h public 区:
     void sendRawToSendBuf(const std::string &msg){send_buffer_.append(msg); }// 不加长度头,原样塞
+    size_t sendBufferSize() const { return send_buffer_.size(); }//发送缓冲当前字节数(批量发送用)
+    bool isPendingBatch() const { return pending_batch_; }//本批次是否已标记待批量发送
+    void setPendingBatch(bool v) { pending_batch_ = v; }
+    bool batchHint() const { return batch_hint_; }//本批次拆出多条消息时提示批量发送
+    void setBatchHint(bool v) { batch_hint_ = v; }
 
 private:
 	int fd_;
 	std::string recv_buffer_;
 	std::string send_buffer_;
 	bool write_waiting_{false};//这里不能使用原子类型，因为connection类需要进map，要进行复制
+    bool pending_batch_{false};//批量发送去重标记,避免同一 fd 本批次重复入队
+    bool batch_hint_{false};//机会式批量:多条消息才积攒,单条直接发
 	bool closing_{ false };//表示正在关闭中，等待缓冲排空再关闭
 	time_t last_active_{ 0 };// 最后收到数据的时间,心跳踢人用
 

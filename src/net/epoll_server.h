@@ -10,6 +10,7 @@
 #include <functional>
 #include <cstdint>
 #include <deque>
+#include <vector>
 #include <thread>
 // 连接令牌:fd + 代际号。
 struct ConnectionId{
@@ -46,12 +47,15 @@ private:
     
     bool isInLoopThread() const { return std::this_thread::get_id() == loop_thread_id; } // 是不是在主线程工作
     void sendInLoop(ConnectionId id, const std::string &msg);//网络io直接发
+    void flushPendingWrites();   // 批量发送:本批次积攒的 fd 统一 flush
+    void flushOne(int fd);       // 单个 fd:flush 发送缓冲并按结果重新挂事件
+    void markPendingSend(int fd);// 标记 fd 待本批次末统一批量发送
 
 	int epfd_;
 	static std::atomic<bool> stop_;
     std::atomic<uint64_t> next_generation_{1}; // 每 accept 一个新连接,发一个唯一代际号
     ThreadPool& pool_;
-	epoll_event events_[64];
+	epoll_event events_[1024];
 	std::map<int, Connection> fd_list;
 	int heartbeat_timeout_;
 	int sub_index_;   // sub 编号(日志/定位用)
@@ -61,4 +65,7 @@ private:
     std::mutex workers_results_mutex_;//保护上面那玩意的锁，多个worker同时塞进来会坏掉的
     std::thread::id loop_thread_id;//主线程id
     int wake_up_fd_{-1};
+    std::vector<int> pending_send_fds_;//批量发送:本批次积攒待 flush 的 fd(仅 loop 线程访问)
+    const size_t kSendBatchThreshold{4096}; //发送缓冲积攒阈值,达到立即 flush
+    const size_t kRecvBatchLimit{64 * 1024};//单次读事件最多收多少字节,防饿死
 };

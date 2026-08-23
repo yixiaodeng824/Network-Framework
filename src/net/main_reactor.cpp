@@ -58,7 +58,7 @@ void MainReactor::setMessageHandler(std::function<void(EpollServer &, Connection
 void MainReactor::acceptLoop(){
     while (!EpollServer::shouldStop())
     {
-        int n = epoll_wait(epfd_, events_, 64, 100);
+        int n = epoll_wait(epfd_, events_, 1024, 100);
         if(n<0){
             if(errno==EINTR)
                 continue;
