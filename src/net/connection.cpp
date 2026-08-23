@@ -4,6 +4,8 @@
 #include <sys/socket.h>
 #include <cstdint>
 #include <cerrno>
+#include <strings.h> // strncasecmp
+#include <cstdlib>   // atoi
 using namespace std;
 
 
@@ -13,21 +15,50 @@ std::vector<std::string> Connection::processBufferedData() {
 	while (true) {
 		size_t remain = recv_buffer_.size() - recv_idx_;
 		if (remain < 4)	break;
-		uint32_t len;
-		memcpy(&len, recv_buffer_.data() + recv_idx_, 4);
-		len = ntohl(len);
-		if (len > kMaxFrameSize){
-			frame_error_ = true;//应该要关闭连接
-			recv_buffer_.clear();
-			recv_idx_ = 0;
-			break;
-		}
-		if (remain < 4 + len) break;
+        const char *data = recv_buffer_.data() + recv_idx_;
 
-		string msg = recv_buffer_.substr(recv_idx_ + 4, len);
-		
-		afterPackageResult.push_back(msg);
-		recv_idx_ += (4 + len);
+        bool is_HTTP = (memcmp(data, "GET ", 4) == 0 || memcmp(data, "POST", 4)==0 || memcmp(data, "HEAD", 4)==0 || memcmp(data, "PUT ", 4)==0);
+        if(is_HTTP){
+            const char* header_end = nullptr;
+            for (size_t i = 0; i + 3 < remain;i++){
+                if(data[i]=='\r'&&data[i+1]=='\n'&&data[i+2]=='\r'&&data[i+3]=='\n'){
+                    header_end = data + i + 4;break;
+                }
+                
+            }
+            if(header_end==nullptr) break;//半包
+            size_t header_len = header_end - data;
+            //解析content-len
+            size_t content_len = 0;
+            for (size_t i = 0; i + 14 < remain;i++){
+                if(strncasecmp(data+i,"Content-Length",15)==0){
+                    content_len = atoi(data + i + 15);
+                    break;
+                }
+            }
+            if(remain < content_len + header_len)   break;//半包
+            string msg = recv_buffer_.substr(recv_idx_, content_len + header_len);
+            afterPackageResult.push_back(msg);
+            recv_idx_ += (header_len + content_len);
+        }
+        else{
+            uint32_t len;
+            memcpy(&len, recv_buffer_.data() + recv_idx_, 4);
+            len = ntohl(len);
+            if (len > kMaxFrameSize){
+                frame_error_ = true;//应该要关闭连接
+                recv_buffer_.clear();
+                recv_idx_ = 0;
+                break;
+            }
+            if (remain < 4 + len) break;
+
+            string msg = recv_buffer_.substr(recv_idx_ + 4, len);
+            
+            afterPackageResult.push_back(msg);
+            recv_idx_ += (4 + len);
+        }
+        
 	}
 
 	//空间清理

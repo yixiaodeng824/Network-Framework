@@ -39,10 +39,18 @@ int main(int argc,char* argv[]) {
 		}
 	}
     ThreadPool tp(threadnum);
-    int sub_count = 2; // sub 个数,先写死跑通,以后加 -s 参数
+    int sub_count = 5; // sub 个数,先写死跑通,以后加 -s 参数
     MainReactor main(port, tp, heartbeats, sub_count);
     main.setMessageHandler([](EpollServer &server, ConnectionId id, const std::string &msg)
-                           { server.sendTo(id, msg); });
+                           {
+                               std::string resp =
+                                   "HTTP/1.1 200 OK\r\n"
+                                   "Content-Length: 2\r\n"
+                                   "Content-Type: text/plain\r\n"
+                                   "\r\n"
+                                   "ok";
+                               server.sendToRaw(id, resp); // ← 原样发,不带长度头
+                           });
     main.start();
     return 0;
 }

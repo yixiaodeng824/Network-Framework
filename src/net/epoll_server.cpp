@@ -310,6 +310,29 @@ void EpollServer::handleWakeup(){
     }
 }
 
+// epoll_server.cpp:
+void EpollServer::sendToRaw(ConnectionId id, const std::string &msg)
+{
+    int fd = id.fd;
+    auto it = fd_list.find(fd);
+    if (it == fd_list.end() || it->second.generation() != id.generation)
+        return;
+    it->second.sendRawToSendBuf(msg);             // ① 原样塞(不加长度头)
+    SendResult r = it->second.sendReadyMessage(); // ② 尝试发
+    epoll_event nev;
+    nev.data.fd = fd;
+    if (r == SendResult::SentAll)
+        nev.events = EPOLLIN | EPOLLONESHOT;
+    else if (r == SendResult::Pending)
+        nev.events = EPOLLIN | EPOLLOUT | EPOLLONESHOT;
+    else
+    {
+        closeConnection(fd);
+        return;
+    }
+    epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+}
+
 void EpollServer::sendTo(ConnectionId id, const string &msg)
 {
     if(isInLoopThread()){//小型网络io直接发

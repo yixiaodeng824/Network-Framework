@@ -32,6 +32,9 @@ public:
     // public 区加两个函数(放在 hasSendError 下面):
     uint64_t generation() const { return generation_; } // 查自己的代际
     void setGeneration(uint64_t g) { generation_ = g; } // 发牌时写入代际
+    // connection.h public 区:
+    void sendRawToSendBuf(const std::string &msg){send_buffer_.append(msg); }// 不加长度头,原样塞
+
 private:
 	int fd_;
 	std::string recv_buffer_;

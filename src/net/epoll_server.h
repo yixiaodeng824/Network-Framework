@@ -26,7 +26,8 @@ public:
 	void epollserver_exit();
 	void setMessageHandler(std::function<void(EpollServer&,ConnectionId,const std::string&)> f);
 	void sendTo(ConnectionId id, const std::string& msg);//信息发给特定fd
-	void broadcast(int exptr_fd, const std::string& msg);//广播
+    void sendToRaw(ConnectionId id, const std::string &msg);//不加长度头
+    void broadcast(int exptr_fd, const std::string& msg);//广播
     void acceptNewConnection(int fd);//从主epoll接fd进来加代际，代替acceptnewclient
     void stopSub() { stop_ = true; }
     void queueInLoop(std::function<void()> cb);//worker干完活投递给主线程，主线程再发
@@ -53,11 +54,11 @@ private:
 	epoll_event events_[64];
 	std::map<int, Connection> fd_list;
 	int heartbeat_timeout_;
+	int sub_index_;   // sub 编号(日志/定位用)
 	std::function<void(EpollServer&, ConnectionId , const std::string&)>	handler_;
 
     std::deque<std::function<void()>> workers_results_;//重活传回调到这里面，主线程做
     std::mutex workers_results_mutex_;//保护上面那玩意的锁，多个worker同时塞进来会坏掉的
     std::thread::id loop_thread_id;//主线程id
-    int wake_up_fd_{-1};//叫醒主线程
-    int sub_index_;
+    int wake_up_fd_{-1};
 };
