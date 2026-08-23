@@ -20,7 +20,7 @@ private:
     int port_;
     int heartbeat_timeout_;
     int sub_count_;
-    epoll_event events_[64];
+	epoll_event events_[1024];
     ThreadPool &pool_;
     std::vector<std::thread> sub_epoll_threads_;//给sub分线程，按照下标对齐
     std::vector<std::unique_ptr<EpollServer>> subs_;//包含的sub
