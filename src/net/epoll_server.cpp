@@ -133,29 +133,34 @@ void EpollServer::flushOne(int fd) {
     SendResult result = it->second.sendReadyMessage();
     it->second.setPendingBatch(false);
     bool closing = it->second.isClosing();
-    epoll_event nev;
-    nev.data.fd = fd;
+    bool ww = it->second.isWriteWaiting();
     if (result == SendResult::SentAll) {
         if (closing) {
             shutdown(fd, SHUT_WR);
             closeConnection(fd);
             return;
         }
-        nev.events = EPOLLIN | EPOLLONESHOT;
-    }//对方程序可能会阻塞不读,这个时候send就会卡住,我们需要解决这个问题
-    else if (result == SendResult::Pending) {//可能还会有新数据同时进来,要加epollin
-        if (closing) {
-            nev.events = EPOLLOUT | EPOLLONESHOT;//关闭中,不挂读
-        }
-        else {
-            nev.events = EPOLLIN | EPOLLOUT | EPOLLONESHOT;
-        }
+        if (ww) {//之前挂了 EPOLLOUT,现在发完了,去掉(状态变化才 MOD)
+            it->second.setWriteWaiting(false);
+            epoll_event nev;
+            nev.data.fd = fd;
+            nev.events = EPOLLIN | EPOLLRDHUP;
+            epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+        }//ET:没挂 EPOLLOUT 就不用 MOD,省一次 syscall
+    }
+    else if (result == SendResult::Pending) {
+        if (!ww) {//第一次挂 EPOLLOUT(ET:仅状态变化时 MOD)
+            it->second.setWriteWaiting(true);
+            epoll_event nev;
+            nev.data.fd = fd;
+            nev.events = closing ? EPOLLOUT : (EPOLLIN | EPOLLOUT);
+            epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+        }//已挂则等 socket 可写边沿再触发,不 MOD
     }
     else {
         closeConnection(fd);
         return;
     }
-    epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
 }
 
 void  EpollServer::handleClient(ConnectionId id) {
@@ -171,6 +176,7 @@ void  EpollServer::handleClient(ConnectionId id) {
         char buf[4096];
         size_t total = 0;
         bool peer_closed = false;
+        bool need_rearm_read = false;
         bool io_error = false;
         while (true) {
             int len = recv(fd, buf, sizeof(buf), 0);
@@ -183,7 +189,7 @@ void  EpollServer::handleClient(ConnectionId id) {
                     it->second.touchActive();//刷新一下活跃时间
                 }
                 total += (size_t)len;
-                if (total >= kRecvBatchLimit) break; // 防饿死,剩下的下一轮再收
+                if (total >= kRecvBatchLimit) { need_rearm_read = true; break; } // ET:到上限先处理,再重新制造读边沿
             }
             else if (len == 0) { peer_closed = true; break; }
             else {
@@ -219,45 +225,31 @@ void  EpollServer::handleClient(ConnectionId id) {
                 it->second.setBatchHint(false);
             }
         }
+        if (need_rearm_read) {//ET 陷阱:没读到 EAGAIN 就停下会丢边沿,这里重新制造一次读边沿
+            epoll_event nev;
+            nev.data.fd = fd;
+            bool ww = false;
+            {
+                auto it = fd_list.find(fd);
+                if (it == fd_list.end() || it->second.generation() != id.generation)
+                    return;
+                ww = it->second.isWriteWaiting();
+            }
+            nev.events = ww ? (EPOLLIN | EPOLLOUT) : (EPOLLIN | EPOLLRDHUP);
+            epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
+        }
         if (peer_closed) {//关闭fd,可能fd对应的缓冲区仍然有东西,需要全发完再关
-            SendResult result;
             {
                 auto it = fd_list.find(fd);
                 if (it == fd_list.end() || it->second.generation() != id.generation)
                     return;
                 it->second.markClosing();
-                result = it->second.sendReadyMessage();
             }
-            epoll_event nev;
-            nev.data.fd = fd;
-            //没东西了
-            if (result == SendResult::SentAll) {
-                closeConnection(fd);
-            }
-            else if (result == SendResult::Pending) {
-                nev.events = EPOLLOUT | EPOLLONESHOT;
-                epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
-            }
-            else {//出错
-                closeConnection(fd);
-            }
+            flushOne(fd);//ET:立刻尝试 flush,没发完由 EPOLLOUT 边沿续发
             return;
         }
         //批量 send:回包已积攒在发送缓冲,由 sendInLoop 标记 pending,本批次结束统一 flush
-        //有积攒时不再重复 MOD,统一由 flushPendingWrites 按发送结果挂事件;无积攒则重新挂 EPOLLIN
-        bool batch_pending = false;
-        {
-            auto it = fd_list.find(fd);
-            if (it == fd_list.end() || it->second.generation() != id.generation)
-                return;
-            batch_pending = it->second.isPendingBatch();
-        }
-        if (!batch_pending) {
-            epoll_event nev;
-            nev.data.fd = fd;
-            nev.events = EPOLLIN | EPOLLONESHOT;
-            epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
-        }
+        //ET:EPOLLIN 保持注册,无需 MOD,下一次数据到达会再次触发边沿
 	//});
 }
 
@@ -294,7 +286,7 @@ void EpollServer::acceptNewConnection(int fd){
     LOG_DEBUG("new client fd=%d", fd);
     epoll_event ev;
     ev.data.fd = fd;
-    ev.events = EPOLLIN | EPOLLONESHOT;
+    ev.events = EPOLLIN | EPOLLRDHUP;
     epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev);
 }
 
@@ -380,10 +372,10 @@ void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
 			epoll_event nev;
 			nev.data.fd = it.first;
 			if (result == SendResult::SentAll) {
-				nev.events = EPOLLIN | EPOLLONESHOT;
+				nev.events = EPOLLIN | EPOLLRDHUP;
 			}
 			else if (result == SendResult::Pending) {
-				nev.events = EPOLLOUT | EPOLLIN | EPOLLONESHOT;
+				nev.events = EPOLLIN | EPOLLOUT;
 			}
 			else {
 				toClose.push_back(it.first);
