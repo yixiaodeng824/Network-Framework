@@ -1,3 +1,6 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include "epoll_server.h"
 #include "Logger.h"
 #include <sys/socket.h>
@@ -12,6 +15,7 @@
 #include <vector>
 #include <sys/eventfd.h>
 using namespace std;
+static constexpr int RECVMMSG_BATCH = 8; // recvmmsg 一次系统调用最多收的段数(每段 4KB)
 atomic<bool> EpollServer::stop_{ false };
 
 EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout = 60) : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout)
@@ -172,23 +176,36 @@ void  EpollServer::handleClient(ConnectionId id) {
         if (it == fd_list.end() || it->second->generation() != id.generation)
             return;
         std::shared_ptr<Connection> conn = it->second;
-        //批量 recv:一次事件循环尽量把 socket 可读数据都收进来,攒够 kRecvBatchLimit 或 EAGAIN 为止
-        char buf[4096];
+        //批量 recv:recvmmsg 一次系统调用收最多 RECVMMSG_BATCH 段(4KB x 8),循环到 EAGAIN 或 64KB 上限
+        char bufs[RECVMMSG_BATCH][4096];
+        struct iovec iovs[RECVMMSG_BATCH];
+        struct mmsghdr mms[RECVMMSG_BATCH];
+        memset(mms, 0, sizeof(mms));
+        for (int i = 0; i < RECVMMSG_BATCH; ++i) {
+            iovs[i].iov_base = bufs[i];
+            iovs[i].iov_len = sizeof(bufs[i]);
+            mms[i].msg_hdr.msg_iov = &iovs[i];
+            mms[i].msg_hdr.msg_iovlen = 1;
+        }
         size_t total = 0;
         bool peer_closed = false;
         bool io_error = false;
         bool need_rearm_read = false;
         while (true) {
-            int len = recv(fd, buf, sizeof(buf), 0);
-            if (len > 0) {
-                conn->appendRecv(buf, len);
+            int n = recvmmsg(fd, mms, RECVMMSG_BATCH, MSG_DONTWAIT, nullptr);
+            if (n > 0) {
+                if (mms[0].msg_len == 0) { peer_closed = true; break; }// 流式 socket EOF:返回 vlen 个 0 长度消息
+                for (int i = 0; i < n; ++i) {
+                    conn->appendRecv(bufs[i], mms[i].msg_len);
+                    total += mms[i].msg_len;
+                }
                 conn->touchActive();//刷新一下活跃时间
-                total += (size_t)len;
                 if (total >= kRecvBatchLimit) { need_rearm_read = true; break; } // ET:到上限先处理,再重新制造读边沿
             }
-            else if (len == 0) { peer_closed = true; break; }
+            else if (n == 0) { peer_closed = true; break; }// 对端关闭(EOF)
             else {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+                if (errno == EINTR) continue;
                 io_error = true; break;
             }
         }
