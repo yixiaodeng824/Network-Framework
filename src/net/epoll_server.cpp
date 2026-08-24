@@ -144,7 +144,7 @@ void EpollServer::flushOne(int fd) {
             it->second.setWriteWaiting(false);
             epoll_event nev;
             nev.data.fd = fd;
-            nev.events = EPOLLIN | EPOLLRDHUP;
+            nev.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
             epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
         }//ET:没挂 EPOLLOUT 就不用 MOD,省一次 syscall
     }
@@ -153,7 +153,7 @@ void EpollServer::flushOne(int fd) {
             it->second.setWriteWaiting(true);
             epoll_event nev;
             nev.data.fd = fd;
-            nev.events = closing ? EPOLLOUT : (EPOLLIN | EPOLLOUT);
+            nev.events = closing ? (EPOLLOUT | EPOLLET) : (EPOLLIN | EPOLLOUT | EPOLLET);
             epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
         }//已挂则等 socket 可写边沿再触发,不 MOD
     }
@@ -235,7 +235,7 @@ void  EpollServer::handleClient(ConnectionId id) {
                     return;
                 ww = it->second.isWriteWaiting();
             }
-            nev.events = ww ? (EPOLLIN | EPOLLOUT) : (EPOLLIN | EPOLLRDHUP);
+            nev.events = ww ? (EPOLLIN | EPOLLOUT | EPOLLET) : (EPOLLIN | EPOLLRDHUP | EPOLLET);
             epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
         }
         if (peer_closed) {//关闭fd,可能fd对应的缓冲区仍然有东西,需要全发完再关
@@ -286,7 +286,7 @@ void EpollServer::acceptNewConnection(int fd){
     LOG_DEBUG("new client fd=%d", fd);
     epoll_event ev;
     ev.data.fd = fd;
-    ev.events = EPOLLIN | EPOLLRDHUP;
+    ev.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
     epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev);
 }
 
@@ -372,10 +372,10 @@ void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
 			epoll_event nev;
 			nev.data.fd = it.first;
 			if (result == SendResult::SentAll) {
-				nev.events = EPOLLIN | EPOLLRDHUP;
+				nev.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
 			}
 			else if (result == SendResult::Pending) {
-				nev.events = EPOLLIN | EPOLLOUT;
+				nev.events = EPOLLIN | EPOLLOUT | EPOLLET;
 			}
 			else {
 				toClose.push_back(it.first);

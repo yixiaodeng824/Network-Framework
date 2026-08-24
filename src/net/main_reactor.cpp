@@ -50,7 +50,7 @@ void MainReactor::start(){
     LOG_INFO("start listening on port %d, sub_count=%d", port_, sub_count_);
     epoll_event nev;
     nev.data.fd = listen_fd;
-    nev.events = EPOLLIN;
+    nev.events = EPOLLIN | EPOLLET;
     epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd, &nev);
 
     for (int i = 0; i < sub_count_;i++){
