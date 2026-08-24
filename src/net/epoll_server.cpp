@@ -130,10 +130,10 @@ void EpollServer::flushOne(int fd) {
     auto it = fd_list.find(fd);
     if (it == fd_list.end() || it->second.generation() != id.generation)
         return;
+    bool ww = it->second.isWriteWaiting();//必须在 sendReadyMessage 之前读(Pending 时它会置 true)
     SendResult result = it->second.sendReadyMessage();
     it->second.setPendingBatch(false);
     bool closing = it->second.isClosing();
-    bool ww = it->second.isWriteWaiting();
     if (result == SendResult::SentAll) {
         if (closing) {
             shutdown(fd, SHUT_WR);
@@ -149,7 +149,7 @@ void EpollServer::flushOne(int fd) {
         }//ET:没挂 EPOLLOUT 就不用 MOD,省一次 syscall
     }
     else if (result == SendResult::Pending) {
-        if (!ww) {//第一次挂 EPOLLOUT(ET:仅状态变化时 MOD)
+        if (!ww) {//第一次 Pending 才挂 EPOLLOUT(ET:仅状态变化时 MOD)
             it->second.setWriteWaiting(true);
             epoll_event nev;
             nev.data.fd = fd;
@@ -166,28 +166,21 @@ void EpollServer::flushOne(int fd) {
 void  EpollServer::handleClient(ConnectionId id) {
 //	pool_.post([this, id] {
         int fd = id.fd;
-        //代际不对直接退出
-        {
-            auto it = fd_list.find(fd);
-            if(it==fd_list.end()||it->second.generation()!=id.generation)
-                return;
-        }
+        //代际校验 + 一次 find,整个事件复用同一迭代器(本线程独占 fd_list,期间不删除)
+        auto it = fd_list.find(fd);
+        if (it == fd_list.end() || it->second.generation() != id.generation)
+            return;
         //批量 recv:一次事件循环尽量把 socket 可读数据都收进来,攒够 kRecvBatchLimit 或 EAGAIN 为止
         char buf[4096];
         size_t total = 0;
         bool peer_closed = false;
-        bool need_rearm_read = false;
         bool io_error = false;
+        bool need_rearm_read = false;
         while (true) {
             int len = recv(fd, buf, sizeof(buf), 0);
             if (len > 0) {
-                {
-                    auto it = fd_list.find(fd);
-                    if (it == fd_list.end() || it->second.generation() != id.generation)
-                        return;
-                    it->second.appendRecv(buf, len);
-                    it->second.touchActive();//刷新一下活跃时间
-                }
+                it->second.appendRecv(buf, len);
+                it->second.touchActive();//刷新一下活跃时间
                 total += (size_t)len;
                 if (total >= kRecvBatchLimit) { need_rearm_read = true; break; } // ET:到上限先处理,再重新制造读边沿
             }
@@ -201,52 +194,30 @@ void  EpollServer::handleClient(ConnectionId id) {
         vector<string> msgs;
         bool frame_error = false;
         if (total > 0) {
-            {
-                auto it = fd_list.find(fd);
-                if (it == fd_list.end() || it->second.generation() != id.generation)
-                    return;
-                msgs = move(it->second.processBufferedData());
-                frame_error = it->second.hasFrameError();
-            }
+            msgs = move(it->second.processBufferedData());
+            frame_error = it->second.hasFrameError();
             if (frame_error) { closeConnection(fd); return; }
-            {
-                auto it = fd_list.find(fd);
-                if (it == fd_list.end() || it->second.generation() != id.generation)
-                    return;
-                it->second.setBatchHint(msgs.size() > 1);//多条消息才走批量发送
-            }
+            it->second.setBatchHint(msgs.size() > 1);//多条消息才走批量发送
             for (auto& msg : msgs) {
                 if (handler_) handler_(*this, id, msg);    //锁外触发回调(回包进发送缓冲,由 sendInLoop 决定批量或直发)
             }
-            {
-                auto it = fd_list.find(fd);
-                if (it == fd_list.end() || it->second.generation() != id.generation)
-                    return;
-                it->second.setBatchHint(false);
-            }
+            //回调可能增删连接,重新定位迭代器并校验代际
+            it = fd_list.find(fd);
+            if (it == fd_list.end() || it->second.generation() != id.generation)
+                return;
+            it->second.setBatchHint(false);
+        }
+        if (peer_closed) {//关闭fd,可能fd对应的缓冲区仍然有东西,需要全发完再关
+            it->second.markClosing();
+            flushOne(fd);//ET:立刻尝试 flush,没发完由 EPOLLOUT 边沿续发
+            return;
         }
         if (need_rearm_read) {//ET 陷阱:没读到 EAGAIN 就停下会丢边沿,这里重新制造一次读边沿
             epoll_event nev;
             nev.data.fd = fd;
-            bool ww = false;
-            {
-                auto it = fd_list.find(fd);
-                if (it == fd_list.end() || it->second.generation() != id.generation)
-                    return;
-                ww = it->second.isWriteWaiting();
-            }
+            bool ww = it->second.isWriteWaiting();
             nev.events = ww ? (EPOLLIN | EPOLLOUT | EPOLLET) : (EPOLLIN | EPOLLRDHUP | EPOLLET);
             epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
-        }
-        if (peer_closed) {//关闭fd,可能fd对应的缓冲区仍然有东西,需要全发完再关
-            {
-                auto it = fd_list.find(fd);
-                if (it == fd_list.end() || it->second.generation() != id.generation)
-                    return;
-                it->second.markClosing();
-            }
-            flushOne(fd);//ET:立刻尝试 flush,没发完由 EPOLLOUT 边沿续发
-            return;
         }
         //批量 send:回包已积攒在发送缓冲,由 sendInLoop 标记 pending,本批次结束统一 flush
         //ET:EPOLLIN 保持注册,无需 MOD,下一次数据到达会再次触发边沿
