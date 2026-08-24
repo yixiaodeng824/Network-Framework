@@ -30,6 +30,7 @@ DETAIL="${NF_DETAIL:-thread_detail.csv}"
 BENCH_OUT="${NF_BENCH_OUT:-bench_output.txt}"
 BENCH_CMD="${NF_BENCH_CMD:-python3 -m benchmarks.echo}"
 SERVER_BIN="${NF_SERVER_BIN:-./build/server}"
+SERVER_ARGS="${NF_SERVER_ARGS:-}"     # 附加 server 参数,如 "-a"(绑核) / "-s 8"
 
 cd "$(dirname "$0")"
 
@@ -40,7 +41,7 @@ cmake --build build --target server --parallel >/dev/null
 
 # ---------- 2) 启动 server ----------
 echo "==> starting server on port $PORT (threads=$THREADS, subs=$SUBS)"
-"$SERVER_BIN" -p "$PORT" -t "$THREADS" &
+"$SERVER_BIN" -p "$PORT" -t "$THREADS" $SERVER_ARGS &
 SERVER_PID=$!
 cleanup() {
     kill -INT "$SERVER_PID" 2>/dev/null || true
