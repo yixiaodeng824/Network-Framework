@@ -9,32 +9,32 @@
 
 #include "connection.h"
 
-// io_uring ç‰ˆ echo æœåŠ¡å™¨(å•çº¿ç¨‹,ä¸€ä¸ª ring)ã€‚
-// æ ¸å¿ƒæ€è·¯:recv/send/accept å…¨éƒ¨æŒ‚åˆ°åŒä¸€ä¸ª io_uring,ä¸€æ¬¡ io_uring_enter
-// ç³»ç»Ÿè°ƒç”¨åŒæ—¶æäº¤ N ä¸ª SQE å¹¶æ”¶å‰² M ä¸ªå®Œæˆäº‹ä»¶,ä»æ ¹ä¸Šæ›¿ä»£ epoll+recv+send
-// çš„å¤šæ¬¡ syscall;å¤ç”¨ Connection åš 4 å­—èŠ‚é•¿åº¦å¤´çš„æ‹†åŒ…/åŠåŒ…å¤„ç†ã€‚
+// io_uring °æ echo ·şÎñÆ÷(µ¥Ïß³Ì,Ò»¸ö ring)¡£
+// ºËĞÄË¼Â·:recv/send/accept È«²¿¹Òµ½Í¬Ò»¸ö io_uring,Ò»´Î io_uring_enter
+// ÏµÍ³µ÷ÓÃÍ¬Ê±Ìá½» N ¸ö SQE ²¢ÊÕ¸î M ¸öÍê³ÉÊÂ¼ş,´Ó¸ùÉÏÌæ´ú epoll+recv+send
+// µÄ¶à´Î syscall;¸´ÓÃ Connection ×ö 4 ×Ö½Ú³¤¶ÈÍ·µÄ²ğ°ü/°ë°ü´¦Àí¡£
 class IoUringServer {
 public:
     IoUringServer(int port, int threads, int heartbeat_timeout, int affinity_core);
     ~IoUringServer();
 
-    void start();                       // é˜»å¡è¿è¡Œäº‹ä»¶å¾ªç¯
-    static void handle_signal(int);     // SIGINT/SIGTERM ç½®åœæ­¢æ ‡å¿—
+    void start();                       // ×èÈûÔËĞĞÊÂ¼şÑ­»·
+    static void handle_signal(int);     // SIGINT/SIGTERM ÖÃÍ£Ö¹±êÖ¾
     static volatile sig_atomic_t g_stop;
 
 private:
     enum Op : uint8_t { OP_ACCEPT = 1, OP_RECV = 2, OP_SEND = 3 };
 
     struct Conn {
-        Connection conn;                 // å¤ç”¨æ‹†åŒ…é€»è¾‘
-        std::deque<std::string> out;     // å¾…å‘é€å›åŒ…(echo æ¨¡å¼åŸæ ·å›)
+        Connection conn;                 // ¸´ÓÃ²ğ°üÂß¼­
+        std::deque<std::string> out;     // ´ı·¢ËÍ»Ø°ü(echo Ä£Ê½Ô­Ñù»Ø)
         bool recv_inflight{false};
         bool send_inflight{false};
-        char buf[4096];                  // å•è¿æ¥å• recv åœ¨é£,ç¼“å†²å¯å¤ç”¨
+        char buf[4096];                  // µ¥Á¬½Óµ¥ recv ÔÚ·É,»º³å¿É¸´ÓÃ
         explicit Conn(int fd) : conn(fd) {}
     };
 
-    // ---- ring åŸå§‹æ¥å£(ä¸ä¾èµ– liburing,ç›´æ¥ç”¨ syscall) ----
+    // ---- ring Ô­Ê¼½Ó¿Ú(²»ÒÀÀµ liburing,Ö±½ÓÓÃ syscall) ----
     bool ring_setup(unsigned entries);
     bool submit_sqe(uint8_t op, int fd, uint64_t user_data,
                     void* addr = nullptr, unsigned len = 0, int extra_fd = -1);
@@ -47,7 +47,7 @@ private:
     void on_accept(int res);
     void on_recv(int fd, Conn& c, int res);
     void on_send(int fd, Conn& c, int res);
-    void kick();  // æ¯è½®å¾ªç¯è‡ªæ„ˆ:æŠŠå› é˜Ÿåˆ—æ»¡/æ—¶åºä¸¢å¤±çš„ recv/send é‡æ–°æäº¤
+    void kick();  // Ã¿ÂÖÑ­»·×ÔÓú:°ÑÒò¶ÓÁĞÂú/Ê±Ğò¶ªÊ§µÄ recv/send ÖØĞÂÌá½»
     void close_conn(int fd);
     void heartbeat_check();
 

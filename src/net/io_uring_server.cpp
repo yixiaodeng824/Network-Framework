@@ -39,7 +39,7 @@ void pin_to_cpu(int cpu) {
 IoUringServer::IoUringServer(int port, int threads, int heartbeat_timeout, int affinity_core)
     : port_(port), threads_(threads), heartbeat_timeout_(heartbeat_timeout),
       affinity_core_(affinity_core) {
-    // io_uring ä¸‹ä¿æŒé˜»å¡ fd:è¯·æ±‚ç”±å†…æ ¸å¼‚æ­¥ç­‰å¾…,ä¸ä¼šä»¥ -EAGAIN ç©ºè½¬
+    // io_uring ÏÂ±£³Ö×èÈû fd:ÇëÇóÓÉÄÚºËÒì²½µÈ´ı,²»»áÒÔ -EAGAIN ¿Õ×ª
     listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd_ < 0) {
         perror("socket");
@@ -107,7 +107,7 @@ bool IoUringServer::submit_sqe(uint8_t op, int fd, uint64_t user_data, void* add
                                unsigned len, int extra_fd) {
     unsigned tail = *sq_tail_;
     unsigned next = tail + 1;
-    if (next - *sq_head_ > *sq_entries_) return false;  // é˜Ÿåˆ—æ»¡,ç­‰ä¸‹ä¸€è½®
+    if (next - *sq_head_ > *sq_entries_) return false;  // ¶ÓÁĞÂú,µÈÏÂÒ»ÂÖ
     struct io_uring_sqe* sqe = &sqes_[tail & *sq_mask_];
     memset(sqe, 0, sizeof(*sqe));
     sqe->opcode = op;
@@ -119,7 +119,7 @@ bool IoUringServer::submit_sqe(uint8_t op, int fd, uint64_t user_data, void* add
         sqe->addr2 = 0;
     }
     (void)extra_fd;
-    // å…³é”®:sq_array_[tail & mask] ç™»è®°æœ¬æ¬¡ SQE ä¸‹æ ‡,å†…æ ¸é å®ƒå– SQE
+    // ¹Ø¼ü:sq_array_[tail & mask] µÇ¼Ç±¾´Î SQE ÏÂ±ê,ÄÚºË¿¿ËüÈ¡ SQE
     sq_array_[tail & *sq_mask_] = tail & *sq_mask_;
     __sync_synchronize();
     *sq_tail_ = next;
@@ -165,7 +165,7 @@ void IoUringServer::on_accept(int res) {
     auto [it, inserted] = conns_.emplace(fd, Conn(fd));
     Conn& c = it->second;
     submit_recv(fd, c);
-    submit_accept();  // å•å‘ accept,å®Œæˆåå†è¡¥
+    submit_accept();  // µ¥·¢ accept,Íê³ÉºóÔÙ²¹
 }
 
 void IoUringServer::on_recv(int fd, Conn& c, int res) {
@@ -175,7 +175,7 @@ void IoUringServer::on_recv(int fd, Conn& c, int res) {
         return;
     }
     if (res < 0) {
-        if (res != -EAGAIN) close_conn(fd);  // EAGAIN ç”± kick() ç¨åé‡æäº¤
+        if (res != -EAGAIN) close_conn(fd);  // EAGAIN ÓÉ kick() ÉÔºóÖØÌá½»
         return;
     }
     c.conn.appendRecv(c.buf, static_cast<size_t>(res));
@@ -186,7 +186,7 @@ void IoUringServer::on_recv(int fd, Conn& c, int res) {
         return;
     }
     for (auto& msg : msgs) {
-        // echo:å›å®Œæ•´åè®®å¸§(4 å­—èŠ‚é•¿åº¦å¤´ + payload)
+        // echo:»ØÍêÕûĞ­ÒéÖ¡(4 ×Ö½Ú³¤¶ÈÍ· + payload)
         std::string frame;
         frame.resize(4 + msg.size());
         uint32_t n = htonl(static_cast<uint32_t>(msg.size()));
@@ -205,7 +205,7 @@ void IoUringServer::on_send(int fd, Conn& c, int res) {
         return;
     }
     c.out.pop_front();
-    // å‰©ä½™å›åŒ…ç”± kick() æˆ–åç»­ recv è§¦å‘æäº¤
+    // Ê£Óà»Ø°üÓÉ kick() »òºóĞø recv ´¥·¢Ìá½»
 }
 
 void IoUringServer::close_conn(int fd) {
@@ -249,7 +249,7 @@ void IoUringServer::reap_completions() {
             continue;
         }
         auto it = conns_.find(fd);
-        if (it == conns_.end()) continue;  // å·²å…³é—­çš„æ®‹ç•™å®Œæˆ
+        if (it == conns_.end()) continue;  // ÒÑ¹Ø±ÕµÄ²ĞÁôÍê³É
         if (op == OP_RECV) on_recv(fd, it->second, res);
         else if (op == OP_SEND) on_send(fd, it->second, res);
     }
