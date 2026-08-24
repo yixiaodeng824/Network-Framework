@@ -10,6 +10,7 @@
 #include <functional>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <vector>
 #include <thread>
 // 连接令牌:fd + 代际号。
@@ -48,7 +49,7 @@ private:
     bool isInLoopThread() const { return std::this_thread::get_id() == loop_thread_id; } // 是不是在主线程工作
     void sendInLoop(ConnectionId id, const std::string &msg);//网络io直接发
     void flushPendingWrites();   // 批量发送:本批次积攒的 fd 统一 flush
-    void flushOne(int fd);       // 单个 fd:flush 发送缓冲并按结果重新挂事件
+    void flushOne(int fd, const std::shared_ptr<Connection>& conn, uint64_t gen);// 持有指针直接 flush,免再查找
     void markPendingSend(int fd);// 标记 fd 待本批次末统一批量发送
 
 	int epfd_;
@@ -56,7 +57,7 @@ private:
     std::atomic<uint64_t> next_generation_{1}; // 每 accept 一个新连接,发一个唯一代际号
     ThreadPool& pool_;
 	epoll_event events_[1024];
-	std::map<int, Connection> fd_list;
+	std::map<int, std::shared_ptr<Connection>> fd_list; // shared_ptr 保活:回调期间连接不被回收,免重复查找
 	int heartbeat_timeout_;
 	int sub_index_;   // sub 编号(日志/定位用)
 	std::function<void(EpollServer&, ConnectionId , const std::string&)>	handler_;

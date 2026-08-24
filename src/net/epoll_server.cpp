@@ -44,7 +44,7 @@ void EpollServer::heartBeatCheck() {
 	vector<int> timeout_fds;
 	{
 		for (auto& [fd, conn] : fd_list) {
-			if (conn.isTimeout(now, heartbeat_timeout_)) {
+			if (conn->isTimeout(now, heartbeat_timeout_)) {
 				timeout_fds.push_back(fd);
 			}
 		}
@@ -113,27 +113,28 @@ void EpollServer::handle_signal(int) {
 void EpollServer::flushPendingWrites() {
     vector<int> fds = move(pending_send_fds_);
     pending_send_fds_.clear();
-    for (int fd : fds)
-        flushOne(fd);
+    for (int fd : fds) {
+        auto it = fd_list.find(fd);
+        if (it != fd_list.end())
+            flushOne(fd, it->second, it->second->generation());
+    }
 }
 
 void EpollServer::markPendingSend(int fd) {
     auto it = fd_list.find(fd);
-    if (it == fd_list.end() || it->second.isPendingBatch())
+    if (it == fd_list.end() || it->second->isPendingBatch())
         return;
-    it->second.setPendingBatch(true);
+    it->second->setPendingBatch(true);
     pending_send_fds_.push_back(fd);
 }
 
-void EpollServer::flushOne(int fd) {
-    ConnectionId id = makeId(fd);
-    auto it = fd_list.find(fd);
-    if (it == fd_list.end() || it->second.generation() != id.generation)
+void EpollServer::flushOne(int fd, const std::shared_ptr<Connection>& conn, uint64_t gen) {
+    if (!conn || conn->generation() != gen)
         return;
-    bool ww = it->second.isWriteWaiting();//必须在 sendReadyMessage 之前读(Pending 时它会置 true)
-    SendResult result = it->second.sendReadyMessage();
-    it->second.setPendingBatch(false);
-    bool closing = it->second.isClosing();
+    bool ww = conn->isWriteWaiting();//必须在 sendReadyMessage 之前读(Pending 时它会置 true)
+    SendResult result = conn->sendReadyMessage();
+    conn->setPendingBatch(false);
+    bool closing = conn->isClosing();
     if (result == SendResult::SentAll) {
         if (closing) {
             shutdown(fd, SHUT_WR);
@@ -141,7 +142,7 @@ void EpollServer::flushOne(int fd) {
             return;
         }
         if (ww) {//之前挂了 EPOLLOUT,现在发完了,去掉(状态变化才 MOD)
-            it->second.setWriteWaiting(false);
+            conn->setWriteWaiting(false);
             epoll_event nev;
             nev.data.fd = fd;
             nev.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
@@ -150,7 +151,7 @@ void EpollServer::flushOne(int fd) {
     }
     else if (result == SendResult::Pending) {
         if (!ww) {//第一次 Pending 才挂 EPOLLOUT(ET:仅状态变化时 MOD)
-            it->second.setWriteWaiting(true);
+            conn->setWriteWaiting(true);
             epoll_event nev;
             nev.data.fd = fd;
             nev.events = closing ? (EPOLLOUT | EPOLLET) : (EPOLLIN | EPOLLOUT | EPOLLET);
@@ -166,10 +167,11 @@ void EpollServer::flushOne(int fd) {
 void  EpollServer::handleClient(ConnectionId id) {
 //	pool_.post([this, id] {
         int fd = id.fd;
-        //代际校验 + 一次 find,整个事件复用同一迭代器(本线程独占 fd_list,期间不删除)
+        //一次 find,持有 shared_ptr 保活,整个事件复用同一对象,不再反复查找
         auto it = fd_list.find(fd);
-        if (it == fd_list.end() || it->second.generation() != id.generation)
+        if (it == fd_list.end() || it->second->generation() != id.generation)
             return;
+        std::shared_ptr<Connection> conn = it->second;
         //批量 recv:一次事件循环尽量把 socket 可读数据都收进来,攒够 kRecvBatchLimit 或 EAGAIN 为止
         char buf[4096];
         size_t total = 0;
@@ -179,8 +181,8 @@ void  EpollServer::handleClient(ConnectionId id) {
         while (true) {
             int len = recv(fd, buf, sizeof(buf), 0);
             if (len > 0) {
-                it->second.appendRecv(buf, len);
-                it->second.touchActive();//刷新一下活跃时间
+                conn->appendRecv(buf, len);
+                conn->touchActive();//刷新一下活跃时间
                 total += (size_t)len;
                 if (total >= kRecvBatchLimit) { need_rearm_read = true; break; } // ET:到上限先处理,再重新制造读边沿
             }
@@ -194,28 +196,28 @@ void  EpollServer::handleClient(ConnectionId id) {
         vector<string> msgs;
         bool frame_error = false;
         if (total > 0) {
-            msgs = move(it->second.processBufferedData());
-            frame_error = it->second.hasFrameError();
+            msgs = move(conn->processBufferedData());
+            frame_error = conn->hasFrameError();
             if (frame_error) { closeConnection(fd); return; }
-            it->second.setBatchHint(msgs.size() > 1);//多条消息才走批量发送
+            conn->setBatchHint(msgs.size() > 1);//多条消息才走批量发送
             for (auto& msg : msgs) {
                 if (handler_) handler_(*this, id, msg);    //锁外触发回调(回包进发送缓冲,由 sendInLoop 决定批量或直发)
             }
-            //回调可能增删连接,重新定位迭代器并校验代际
+            //回调可能增删连接;shared_ptr 保证对象保活,只需确认它仍是当前 fd 的主人(指针相等,零拷贝比较)
             it = fd_list.find(fd);
-            if (it == fd_list.end() || it->second.generation() != id.generation)
+            if (it == fd_list.end() || it->second != conn)
                 return;
-            it->second.setBatchHint(false);
+            conn->setBatchHint(false);
         }
         if (peer_closed) {//关闭fd,可能fd对应的缓冲区仍然有东西,需要全发完再关
-            it->second.markClosing();
-            flushOne(fd);//ET:立刻尝试 flush,没发完由 EPOLLOUT 边沿续发
+            conn->markClosing();
+            flushOne(fd, conn, id.generation);//ET:立刻尝试 flush,没发完由 EPOLLOUT 边沿续发
             return;
         }
         if (need_rearm_read) {//ET 陷阱:没读到 EAGAIN 就停下会丢边沿,这里重新制造一次读边沿
             epoll_event nev;
             nev.data.fd = fd;
-            bool ww = it->second.isWriteWaiting();
+            bool ww = conn->isWriteWaiting();
             nev.events = ww ? (EPOLLIN | EPOLLOUT | EPOLLET) : (EPOLLIN | EPOLLRDHUP | EPOLLET);
             epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
         }
@@ -227,7 +229,9 @@ void  EpollServer::handleClient(ConnectionId id) {
 void EpollServer::handleWrite(ConnectionId id) {
 	//pool_.post([this, id] {
         //统一走批量 flush 的收尾逻辑(发送 + 按结果重新挂事件)
-        flushOne(id.fd);
+        auto it = fd_list.find(id.fd);
+        if (it != fd_list.end())
+            flushOne(id.fd, it->second, id.generation);
 	//	});
 }
 
@@ -243,7 +247,7 @@ void EpollServer::closeConnection(int fd) {
 ConnectionId EpollServer::makeId(int fd){
     auto it = fd_list.find(fd);
     if(it!=fd_list.end()){
-        return {fd, it->second.generation()};
+        return {fd, it->second->generation()};
     }
     return {fd, 0};
 }
@@ -251,9 +255,9 @@ ConnectionId EpollServer::makeId(int fd){
 void EpollServer::acceptNewConnection(int fd){
     int flag = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flag|O_NONBLOCK);
-    Connection conn(fd);
-    conn.setGeneration(next_generation_.fetch_add(1));
-    fd_list.insert({fd, move(conn)});
+    auto conn = std::make_shared<Connection>(fd);
+    conn->setGeneration(next_generation_.fetch_add(1));
+    fd_list.insert({fd, std::move(conn)});
     LOG_DEBUG("new client fd=%d", fd);
     epoll_event ev;
     ev.data.fd = fd;
@@ -268,13 +272,13 @@ void EpollServer::setMessageHandler(std::function<void(EpollServer&, ConnectionI
 void EpollServer::sendInLoop(ConnectionId id, const string& msg){
     int fd = id.fd;
     auto it = fd_list.find(fd);
-    if (it == fd_list.end() || it->second.generation() != id.generation)
+    if (it == fd_list.end() || it->second->generation() != id.generation)
         return;
-    it->second.sendMsgToSendBuf(msg); // 只塞缓冲,不真发
+    it->second->sendMsgToSendBuf(msg); // 只塞缓冲,不真发
     //批量发送:积攒到阈值立即 flush,否则挂 pending 等本批次结束统一发
     //机会式批量:本批次拆出多条消息时积攒统一发(减少 send syscall);单条或达到阈值直接发
-    if (it->second.sendBufferSize() >= kSendBatchThreshold || !it->second.batchHint())
-        flushOne(fd);
+    if (it->second->sendBufferSize() >= kSendBatchThreshold || !it->second->batchHint())
+        flushOne(fd, it->second, id.generation);
     else
         markPendingSend(fd);
 }
@@ -306,12 +310,12 @@ void EpollServer::sendToRaw(ConnectionId id, const std::string &msg)
 {
     int fd = id.fd;
     auto it = fd_list.find(fd);
-    if (it == fd_list.end() || it->second.generation() != id.generation)
+    if (it == fd_list.end() || it->second->generation() != id.generation)
         return;
-    it->second.sendRawToSendBuf(msg);             // 原样塞(不加长度头)
+    it->second->sendRawToSendBuf(msg);             // 原样塞(不加长度头)
     //批量发送:达到阈值立即发,否则积攒到本批次结束统一 flush
-    if (it->second.sendBufferSize() >= kSendBatchThreshold)
-        flushOne(fd);
+    if (it->second->sendBufferSize() >= kSendBatchThreshold)
+        flushOne(fd, it->second, id.generation);
     else
         markPendingSend(fd);
 }
@@ -336,10 +340,10 @@ void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
 	{
 		for (auto& it : fd_list) {
 			if (it.first == exptr_fd)	continue;
-			it.second.sendMsgToSendBuf(msg);
+			it.second->sendMsgToSendBuf(msg);
 		}
 		for (auto& it : fd_list) {
-			auto result = it.second.sendReadyMessage(); 
+			auto result = it.second->sendReadyMessage(); 
 			epoll_event nev;
 			nev.data.fd = it.first;
 			if (result == SendResult::SentAll) {
