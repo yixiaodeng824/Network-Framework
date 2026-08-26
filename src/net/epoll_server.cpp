@@ -14,6 +14,7 @@
 using namespace std;
 atomic<bool> EpollServer::stop_{ false };
 
+
 EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout = 60) : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout)
 {
     //从epoll不需要监听事件，等mainreactor分发
@@ -143,7 +144,7 @@ void  EpollServer::handleClient(ConnectionId id) {
 			}
 		}
 		else if(len > 0){
-			vector<string> msgs;
+			vector<PoolString> msgs;
 			bool frame_error = false;
 			{
 				auto it = fd_list.find(fd);
@@ -266,7 +267,7 @@ ConnectionId EpollServer::makeId(int fd){
 void EpollServer::acceptNewConnection(int fd){
     int flag = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flag|O_NONBLOCK);
-    Connection conn(fd);
+    Connection conn(fd,&mem_pool_);
     conn.setGeneration(next_generation_.fetch_add(1));
     fd_list.insert({fd, move(conn)});
     LOG_DEBUG("new client fd=%d", fd);
@@ -276,11 +277,11 @@ void EpollServer::acceptNewConnection(int fd){
     epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev);
 }
 
-void EpollServer::setMessageHandler(std::function<void(EpollServer&, ConnectionId, const std::string&)> f) {
+void EpollServer::setMessageHandler(std::function<void(EpollServer&, ConnectionId, string_view)> f) {
 	handler_ = move(f);
 }
 
-void EpollServer::sendInLoop(ConnectionId id, const string& msg){
+void EpollServer::sendInLoop(ConnectionId id, string_view msg){
     int fd = id.fd;
     auto it = fd_list.find(fd);
     if (it == fd_list.end() || it->second.generation() != id.generation)
@@ -311,7 +312,7 @@ void EpollServer::handleWakeup(){
 }
 
 // epoll_server.cpp:
-void EpollServer::sendToRaw(ConnectionId id, const std::string &msg)
+void EpollServer::sendToRaw(ConnectionId id, string_view msg)
 {
     int fd = id.fd;
     auto it = fd_list.find(fd);
@@ -333,22 +334,21 @@ void EpollServer::sendToRaw(ConnectionId id, const std::string &msg)
     epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &nev);
 }
 
-void EpollServer::sendTo(ConnectionId id, const string &msg)
+void EpollServer::sendTo(ConnectionId id, const string_view msg)
 {
     if(isInLoopThread()){//小型网络io直接发
         sendInLoop(id, msg);
     }
     else{//线程池给过来的消息先扔到队列在发
         static std::once_flag flag;
-        std::call_once(flag, []
-                       { LOG_WARN(">>> sendTo 走了跨线程投递!isInLoopThread 判断有问题"); });
-        queueInLoop([id, msg,this]()
-                    { sendInLoop(id, msg); });
+        std::string owned(msg);
+        queueInLoop([id, this,owned]()
+                    { sendInLoop(id, owned); });
         
     }
 }
 
-void EpollServer::broadcast(int exptr_fd, const std::string& msg) {
+void EpollServer::broadcast(int exptr_fd, string_view msg) {
 	std::vector<int> toClose;
 	{
 		for (auto& it : fd_list) {

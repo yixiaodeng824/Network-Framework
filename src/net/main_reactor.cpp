@@ -51,7 +51,8 @@ void MainReactor::start(){
     acceptLoop();
 }
 
-void MainReactor::setMessageHandler(std::function<void(EpollServer &, ConnectionId, const std::string &)> f){
+void MainReactor::setMessageHandler(std::function<void(EpollServer &, ConnectionId, std::string_view)> f)
+{
     handler_ = move(f);
 }
 

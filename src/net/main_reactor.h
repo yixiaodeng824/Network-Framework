@@ -5,11 +5,12 @@
 #include <vector>
 #include <thread>
 #include <memory>
+#include <string_view>
 class MainReactor{
 public:
     MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count);
     void start();
-    void setMessageHandler(std::function<void(EpollServer &, ConnectionId, const std::string &)> f);
+    void setMessageHandler(std::function<void(EpollServer &, ConnectionId, std::string_view)> f);
     
     ~MainReactor();
 
@@ -25,5 +26,5 @@ private:
     std::vector<std::thread> sub_epoll_threads_;//给sub分线程，按照下标对齐
     std::vector<std::unique_ptr<EpollServer>> subs_;//包含的sub
     int run_robin_{0};//轮询计数器
-    std::function<void(EpollServer &, ConnectionId, const std::string &)> handler_;
+    std::function<void(EpollServer &, ConnectionId, std::string_view)> handler_;
 };

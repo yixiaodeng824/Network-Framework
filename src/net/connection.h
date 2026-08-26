@@ -3,6 +3,11 @@
 #include <ctime>
 #include <vector>
 #include <cstdint>
+#include <string_view>
+#include "memory_pool.h"
+#include "pool_allocator.h"
+using PoolString = std::basic_string<char, std::char_traits<char>, PoolAllocator<char>>;
+
 enum class SendResult {
 	SentAll,    // 发完了
 	Pending,    // 没发完,等 EPOLLOUT 续发
@@ -15,14 +20,15 @@ public:
 	static constexpr size_t kMaxFrameSize = 4 * 1024 * 1024;
 	static constexpr size_t kSendHighWaterMark = 1 * 1024 * 1024;
 	Connection() = default;
-	Connection(int fd) : fd_(fd), recv_buffer_(""), send_buffer_(""), write_waiting_(false),closing_(false),last_active_(time(nullptr)) {
-	}
-	void appendRecv(const char* data, size_t len) {
+    Connection(int fd, MemoryPool *pool) : fd_(fd), recv_buffer_(""), send_buffer_(""), write_waiting_(false), closing_(false), last_active_(time(nullptr)),memory_pool_(pool)
+    {
+    }
+    void appendRecv(const char* data, size_t len) {
 		recv_buffer_.append(data, len);
 	}
-	std::vector<std::string> processBufferedData();//处理粘包半包,发出msg
-	void sendMsgToSendBuf(const std::string&);
-	SendResult sendReadyMessage();
+	std::vector<PoolString> processBufferedData();//处理粘包半包,发出msg
+    void sendMsgToSendBuf(std::string_view);
+    SendResult sendReadyMessage();
 	void markClosing() { closing_ = true; }//标记正在关闭
 	bool isClosing()const { return closing_; }//判断是否正在关闭
 	void touchActive(){ last_active_ = time(nullptr); }//收到数据就刷新活动时间
@@ -33,7 +39,7 @@ public:
     uint64_t generation() const { return generation_; } // 查自己的代际
     void setGeneration(uint64_t g) { generation_ = g; } // 发牌时写入代际
     // connection.h public 区:
-    void sendRawToSendBuf(const std::string &msg){send_buffer_.append(msg); }// 不加长度头,原样塞
+    void sendRawToSendBuf(std::string_view msg) { send_buffer_.append(msg.data(), msg.size()); } // 不加长度头,原样塞
 
 private:
 	int fd_;
@@ -49,4 +55,5 @@ private:
 	bool frame_error_{ false };   // 收到超长长度头,协议错误,该关连接
 	bool send_overflow{ false };
     uint64_t generation_{0};//代际号，每个connection唯一，用来解决某fd退出时队列任务未被处理，新fd复用之后数据混乱问题
+    MemoryPool *memory_pool_{nullptr};
 };
