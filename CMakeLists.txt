@@ -74,6 +74,21 @@ set_tests_properties(
         ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>;NF_SERVER_MODE=http"
 )
 
+add_test(
+    NAME integration_multi_reactor
+    COMMAND
+        ${Python3_EXECUTABLE}
+        -m pytest
+        ${CMAKE_SOURCE_DIR}/tests/integration/test_multi_reactor.py
+)
+
+set_tests_properties(
+    integration_multi_reactor
+    PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>;NF_SERVER_MODE=http"
+)
+
 add_custom_target(bench
     COMMAND
         ${CMAKE_COMMAND} -E env
