@@ -2,6 +2,7 @@
 #include "main_reactor.h"
 #include "io_uring_server.h"
 #include "Logger.h"
+#include <string_view>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -11,9 +12,9 @@ int main(int argc,char* argv[]) {
 	int port = 8888;
 	int threadnum = 0;
 	int heartbeats = 60;
-	int sub_count = 2;    // sub 数量,默认 2,可用 -s 指定
-	string mode = "echo"; // echo=回显(4字节长度头) / http=HTTP 200 demo,可用 -m 切换
-	bool affinity = false;   // -a 开启绑核(真机每核独立推荐)
+	int sub_count = 2;    // sub 数量，默认 2，可用 -s 指定
+	string mode = "http"; // http=HTTP 200 demo / echo=回显 / io_uring，用 -m 切换
+	bool affinity = false;   // -a 绑核（每核独立，推荐压测时开启）
 	for (int i = 1; i < argc; i++) {
 		if ((strcmp(argv[i], "-p") == 0 || (strcmp(argv[i], "--port") == 0) )){
 			if (i+1 >= argc) {
@@ -54,7 +55,7 @@ int main(int argc,char* argv[]) {
 		if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--affinity") == 0) {
 			affinity = true;
 		}
-				if ((strcmp(argv[i], "-m") == 0 || (strcmp(argv[i], "--mode") == 0))) {
+		if ((strcmp(argv[i], "-m") == 0 || (strcmp(argv[i], "--mode") == 0))) {
 			if (i + 1 >= argc) {
 				LOG_DEBUG("no mode");
 				break;
@@ -73,7 +74,7 @@ int main(int argc,char* argv[]) {
     ThreadPool tp(threadnum);
     MainReactor main(port, tp, heartbeats, sub_count, affinity);
     if (mode == "http") {
-        main.setMessageHandler([](EpollServer &server, ConnectionId id, const std::string &msg) {
+        main.setMessageHandler([](EpollServer &server, ConnectionId id, std::string_view msg) {
             std::string resp =
                 "HTTP/1.1 200 OK\r\n"
                 "Content-Length: 2\r\n"
@@ -83,8 +84,8 @@ int main(int argc,char* argv[]) {
             server.sendToRaw(id, resp); // 原样发送,不加长度头
         });
     } else {
-        main.setMessageHandler([](EpollServer &server, ConnectionId id, const std::string &msg) {
-            server.sendTo(id, msg);
+        main.setMessageHandler([](EpollServer &server, ConnectionId id, std::string_view msg) {
+            server.sendTo(id, msg); // 回显
         });
     }
     main.start();

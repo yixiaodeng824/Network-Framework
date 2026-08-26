@@ -10,8 +10,8 @@ using namespace std;
 
 
 
-std::vector<std::string> Connection::processBufferedData() {
-	vector<string>	afterPackageResult;
+std::vector<PoolString> Connection::processBufferedData() {
+	vector<PoolString>	afterPackageResult;
 	while (true) {
 		size_t remain = recv_buffer_.size() - recv_idx_;
 		if (remain < 4)	break;
@@ -42,9 +42,10 @@ std::vector<std::string> Connection::processBufferedData() {
                 recv_idx_ = 0;
                 break;
             }
+            if(remain < content_len + header_len)   break;//鍗婂寘
+            PoolString msg(recv_buffer_.data() + recv_idx_, content_len + header_len, PoolAllocator<char>(memory_pool_));
+            afterPackageResult.push_back(std::move(msg));
             if(remain < content_len + header_len)   break;//半包
-            string msg = recv_buffer_.substr(recv_idx_, content_len + header_len);
-            afterPackageResult.push_back(msg);
             recv_idx_ += (header_len + content_len);
         }
         else{
@@ -54,14 +55,14 @@ std::vector<std::string> Connection::processBufferedData() {
             if (len > kMaxFrameSize){
                 frame_error_ = true;//应该要关闭连接
                 recv_buffer_.clear();
-                recv_idx_ = 0;
+                recv_idx_ = 0;  
                 break;
             }
             if (remain < 4 + len) break;
 
-            string msg = recv_buffer_.substr(recv_idx_ + 4, len);
-            
-            afterPackageResult.push_back(msg);
+            PoolString msg(recv_buffer_.data() + recv_idx_ + 4, len, PoolAllocator<char>(memory_pool_));
+
+            afterPackageResult.push_back(std::move(msg));
             recv_idx_ += (4 + len);
         }
         
@@ -105,12 +106,12 @@ SendResult Connection::sendReadyMessage() {
 	return SendResult::Pending;
 }
 
-void Connection::sendMsgToSendBuf(const std::string& msg) {
+void Connection::sendMsgToSendBuf(string_view msg) {
 	if (send_buffer_.size() + msg.size() > kSendHighWaterMark) {
 		send_overflow = true;
 		return;
 	}
 	uint32_t resp_len = htonl(msg.size());
 	send_buffer_.append(reinterpret_cast<const char*>(&resp_len), 4);
-	send_buffer_.append(msg);
+	send_buffer_.append(msg.data(),msg.size());
 }
