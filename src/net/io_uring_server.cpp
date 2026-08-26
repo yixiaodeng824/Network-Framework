@@ -180,7 +180,7 @@ void IoUringServer::on_recv(int fd, Conn& c, int res) {
     }
     c.conn.appendRecv(c.buf, static_cast<size_t>(res));
     c.conn.touchActive();
-    std::vector<std::string> msgs = c.conn.processBufferedData();
+    std::vector<PoolString> msgs = c.conn.processBufferedData();
     if (c.conn.hasFrameError()) {
         close_conn(fd);
         return;

@@ -20,6 +20,7 @@ public:
 	static constexpr size_t kMaxFrameSize = 4 * 1024 * 1024;
 	static constexpr size_t kSendHighWaterMark = 1 * 1024 * 1024;
 	Connection() = default;
+    Connection(int fd) : Connection(fd, nullptr) {} // Œﬁ≥ÿ∞Ê(io_uring/≤‚ ‘”√,ÕÀªØ new)
     Connection(int fd, MemoryPool *pool) : fd_(fd), recv_buffer_(""), send_buffer_(""), write_waiting_(false), closing_(false), last_active_(time(nullptr)),memory_pool_(pool)
     {
     }
