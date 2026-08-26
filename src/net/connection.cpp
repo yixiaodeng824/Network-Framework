@@ -26,9 +26,9 @@ std::vector<PoolString> Connection::processBufferedData() {
                 }
                 
             }
-            if(header_end==nullptr) break;//åŠåŒ…
+            if(header_end==nullptr) break;//°ë°ü
             size_t header_len = header_end - data;
-            //è§£æcontent-len
+            //½âÎöcontent-len
             size_t content_len = 0;
             for (size_t i = 0; i + 14 < remain;i++){
                 if(strncasecmp(data+i,"Content-Length",14)==0){
@@ -45,6 +45,7 @@ std::vector<PoolString> Connection::processBufferedData() {
             if(remain < content_len + header_len)   break;//åŠåŒ…
             PoolString msg(recv_buffer_.data() + recv_idx_, content_len + header_len, PoolAllocator<char>(memory_pool_));
             afterPackageResult.push_back(std::move(msg));
+            if(remain < content_len + header_len)   break;//°ë°ü
             recv_idx_ += (header_len + content_len);
         }
         else{
@@ -52,7 +53,7 @@ std::vector<PoolString> Connection::processBufferedData() {
             memcpy(&len, recv_buffer_.data() + recv_idx_, 4);
             len = ntohl(len);
             if (len > kMaxFrameSize){
-                frame_error_ = true;//åº”è¯¥è¦å…³é—­è¿æ¥
+                frame_error_ = true;//Ó¦¸ÃÒª¹Ø±ÕÁ¬½Ó
                 recv_buffer_.clear();
                 recv_idx_ = 0;  
                 break;
@@ -67,10 +68,10 @@ std::vector<PoolString> Connection::processBufferedData() {
         
 	}
 
-	//ç©ºé—´æ¸…ç†
+	//¿Õ¼äÇåÀí
 	if (recv_idx_ > 0) {
 		if (recv_idx_ == recv_buffer_.size()) {
-			recv_buffer_.clear();//ä¸åŠ¨å†…å­˜
+			recv_buffer_.clear();//²»¶¯ÄÚ´æ
 			recv_idx_ = 0;
 		}
 		else if (recv_idx_ > 1024) {
@@ -100,7 +101,7 @@ SendResult Connection::sendReadyMessage() {
 		send_idx_ = 0;
 		return SendResult::SentAll;
 	}
-	//send_buffer_.erase(0, n);  //å¦‚æœæœ‰æ¶ˆæ¯ 
+	//send_buffer_.erase(0, n);  //Èç¹ûÓĞÏûÏ¢ 
 	write_waiting_ = true;
 	return SendResult::Pending;
 }

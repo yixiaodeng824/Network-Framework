@@ -11,6 +11,7 @@ add_library(network_framework
     src/net/epoll_server.cpp
     src/net/connection.cpp
     src/net/memory_pool.cpp
+    src/net/io_uring_server.cpp
 
     src/log/Logger.cpp
     src/net/main_reactor.cpp 
@@ -70,5 +71,17 @@ add_custom_target(bench
     WORKING_DIRECTORY
         ${CMAKE_SOURCE_DIR}
 
+    USES_TERMINAL
+)
+add_custom_target(bench_mp
+    COMMAND
+        \ -E env
+        NF_SERVER_BINARY=\$<TARGET_FILE:server>
+                -m benchmarks.echo_mp
+
+    DEPENDS server
+
+    WORKING_DIRECTORY
+        
     USES_TERMINAL
 )
