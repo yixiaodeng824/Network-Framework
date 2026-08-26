@@ -20,7 +20,8 @@ static void pin_to_cpu(int cpu) {
     pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
 }
 MainReactor::MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count, bool affinity):
-port_(port), pool_(thread_pool), heartbeat_timeout_(heartbeat_timeout), sub_count_(sub_count), affinity_(affinity)
+port_(port), pool_(thread_pool), heartbeat_timeout_(heartbeat_timeout), sub_count_(sub_count), affinity_(affinity),
+metrics_(make_shared<PerformanceMetrics>())
 {
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     int fl = fcntl(listen_fd, F_GETFL, 0);
@@ -54,7 +55,7 @@ void MainReactor::start(){
     epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd, &nev);
 
     for (int i = 0; i < sub_count_;i++){
-        subs_.push_back(make_unique<EpollServer>(i, pool_, heartbeat_timeout_));
+        subs_.push_back(make_unique<EpollServer>(i, pool_, heartbeat_timeout_, metrics_));
         //设置回调函数
         subs_[i]->setMessageHandler(handler_);
         //分配线程，启动sub
@@ -93,8 +94,11 @@ void MainReactor::acceptLoop(){
                     if(client_fd<0){
                         if(errno==EINTR)
                             continue;
-                        if(errno==EAGAIN||errno==EWOULDBLOCK)
+                        if(errno==EAGAIN||errno==EWOULDBLOCK) {
+                            metrics_->recordAcceptEagain();
                             break;
+                        }
+                        metrics_->recordAcceptFailure();
                         LOG_ERROR("accept failed: %s", strerror(errno));
                         break;
                     }
@@ -118,6 +122,9 @@ MainReactor::~MainReactor(){
     for(auto& t:sub_epoll_threads_){
         if(t.joinable())
             t.join();
+    }
+    if (!subs_.empty()) {
+        subs_.front()->logMetrics("final");
     }
     close(epfd_);
     close(listen_fd);

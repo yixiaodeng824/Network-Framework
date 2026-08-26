@@ -11,12 +11,13 @@ echo_mp 把连接与事件循环拆到多个进程, 每个进程独立跑 asynci
     python3 -m benchmarks.echo_mp --procs 4 --clients 500 --duration 5 --payload 128
     NF_NOTE=mp_p8 python3 -m benchmarks.echo_mp --procs 8          # 备注写入 benchmark_log.csv
 
-输出: 每个阶段一行 client=.. procs=.. qps=.. p50/p95/p99, 并追加到 benchmark_log.csv。
+输出: 每个阶段一行 client=.. procs=.. qps=.. p50/p95/p99/p999, 并追加到 benchmark_log.csv。
 """
 
 import argparse
 import asyncio
 import csv
+import math
 import multiprocessing
 import os
 import socket
@@ -34,11 +35,11 @@ MAX_SAMPLES_PER_WORKER = 100_000
 def _percentile(values: list[float], p: float) -> float:
     if not values:
         return 0.0
-    values.sort()
-    idx = int(len(values) * p - 1)
-    if idx < 0:
-        idx = 0
-    return values[idx]
+    if not 0 < p <= 1:
+        raise ValueError(f"percentile must be in (0, 1], got {p}")
+    ordered = sorted(values)
+    idx = min(len(ordered) - 1, math.ceil(len(ordered) * p) - 1)
+    return ordered[max(0, idx)]
 
 
 async def _run_worker_loop(
@@ -157,6 +158,7 @@ def _append_to_csv(
     p50: float,
     p95: float,
     p99: float,
+    p999: float,
     note: str,
 ) -> None:
     path = "benchmark_log.csv"
@@ -168,7 +170,8 @@ def _append_to_csv(
             writer.writerow([
                 "时间", "并发", "成功率%", "成功请求", "总耗时(s)",
                 "QPS", "平均延迟(ms)", "最大延迟(ms)", "被拒",
-                "消息/连接", "消息体(字节)", "p50(ms)", "p95(ms)", "p99(ms)", "备注",
+                "消息/连接", "消息体(字节)", "p50(ms)", "p95(ms)", "p99(ms)",
+                "p999(ms)", "备注",
             ])
         writer.writerow([
             time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -185,6 +188,7 @@ def _append_to_csv(
             f"{p50:.2f}",
             f"{p95:.2f}",
             f"{p99:.2f}",
+            f"{p999:.2f}",
             note,
         ])
 
@@ -230,14 +234,16 @@ def main() -> None:
         p50 = _percentile(latencies, 0.50)
         p95 = _percentile(latencies, 0.95)
         p99 = _percentile(latencies, 0.99)
+        p999 = _percentile(latencies, 0.999)
         print(
             f"client={clients} procs={effective_procs} "
-            f"qps={qps:.1f} p50={p50:.2f}ms p95={p95:.2f}ms p99={p99:.2f}ms"
+            f"qps={qps:.1f} p50={p50:.2f}ms p95={p95:.2f}ms "
+            f"p99={p99:.2f}ms p999={p999:.2f}ms"
         )
         if not args.no_csv:
             _append_to_csv(
                 clients, effective_procs, total, elapsed, qps,
-                avg_ms, max_ms, p50, p95, p99, note,
+                avg_ms, max_ms, p50, p95, p99, p999, note,
             )
 
 

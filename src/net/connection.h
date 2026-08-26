@@ -30,6 +30,7 @@ public:
 	std::vector<PoolString> processBufferedData();//处理粘包半包,发出msg
     void sendMsgToSendBuf(std::string_view);
     SendResult sendReadyMessage();
+	bool lastSendWouldBlock() const { return last_send_would_block_; }
 	void markClosing() { closing_ = true; }//标记正在关闭
 	bool isClosing()const { return closing_; }//判断是否正在关闭
 	void touchActive(){ last_active_ = time(nullptr); }//收到数据就刷新活动时间
@@ -42,6 +43,7 @@ public:
     // connection.h public 区:
     void sendRawToSendBuf(std::string_view msg) { send_buffer_.append(msg.data(), msg.size()); } // 不加长度头,原样塞
     size_t sendBufferSize() const { return send_buffer_.size(); }//发送缓冲当前字节数(批量发送用)
+    size_t pendingSendBufferSize() const { return send_buffer_.size() - send_idx_; }
     bool isPendingBatch() const { return pending_batch_; }//本批次是否已标记待批量发送
     void setPendingBatch(bool v) { pending_batch_ = v; }
     bool isWriteWaiting() const { return write_waiting_; }//当前是否挂了 EPOLLOUT(ET 下 MOD 只在状态变化时发生)
@@ -64,6 +66,7 @@ private:
 	int send_idx_{ 0 };
 	bool frame_error_{ false };   // 收到超长长度头,协议错误,该关连接
 	bool send_overflow{ false };
+    bool last_send_would_block_{false};
     uint64_t generation_{0};//代际号，每个connection唯一，用来解决某fd退出时队列任务未被处理，新fd复用之后数据混乱问题
     MemoryPool *memory_pool_{nullptr};
 };

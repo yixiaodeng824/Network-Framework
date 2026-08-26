@@ -15,6 +15,7 @@
 #include <thread>
 #include <string_view>
 #include "memory_pool.h"
+#include "performance_metrics.h"
 // 连接令牌:fd + 代际号。
 struct ConnectionId{
     int fd{-1};
@@ -24,7 +25,8 @@ struct ConnectionId{
 class EpollServer
 {
 public:
-	EpollServer(int sub_index, ThreadPool& pool,int heartbeat_timeout);
+	EpollServer(int sub_index, ThreadPool& pool, int heartbeat_timeout,
+                std::shared_ptr<PerformanceMetrics> metrics = nullptr);
 	void start();
 	static void handle_signal(int);
 	void epollserver_exit();
@@ -36,6 +38,7 @@ public:
     void stopSub() { stop_ = true; }
     void queueInLoop(std::function<void()> cb);//worker干完活投递给主线程，主线程再发
     static bool shouldStop() { return stop_; }
+    void logMetrics(const char* phase) const;
     ~EpollServer();
 
 private:
@@ -43,7 +46,7 @@ private:
     void handleClient(ConnectionId fd);
     void handleWrite(ConnectionId fd);
     ConnectionId makeId(int fd); // 新增:从 fd_list 查当前代际,拼出令牌
-    void closeConnection(int fd);
+    void closeConnection(int fd, CloseReason reason = CloseReason::Other);
 	void heartBeatCheck();
 
     void handleWakeup();                       // 主线程收到门铃:消铃 + 取待办箱执行
@@ -51,7 +54,8 @@ private:
     bool isInLoopThread() const { return std::this_thread::get_id() == loop_thread_id; } // 是不是在主线程工作
     void sendInLoop(ConnectionId id, std::string_view msg);                               // 网络io直接发
     void flushPendingWrites();   // 批量发送:本批次积攒的 fd 统一 flush
-    void flushOne(int fd, const std::shared_ptr<Connection>& conn, uint64_t gen);// 持有指针直接 flush,免再查找
+    void flushOne(int fd, const std::shared_ptr<Connection>& conn, uint64_t gen,
+                  CloseReason close_reason = CloseReason::SendError);// 持有指针直接 flush,免再查找
     void markPendingSend(int fd);// 标记 fd 待本批次末统一批量发送
 
     int epfd_;
@@ -60,9 +64,10 @@ private:
     ThreadPool& pool_;
 	epoll_event events_[1024];
 	std::map<int, std::shared_ptr<Connection>> fd_list; // shared_ptr 保活:回调期间连接不被回收,免重复查找
-	int heartbeat_timeout_;
-	int sub_index_;   // sub 编号(日志/定位用)
+    int heartbeat_timeout_;
+    int sub_index_;   // sub 编号(日志/定位用)
     std::function<void(EpollServer &, ConnectionId, std::string_view)> handler_;
+    std::shared_ptr<PerformanceMetrics> metrics_;
 
     std::deque<std::function<void()>> workers_results_;//重活传回调到这里面，主线程做
     std::mutex workers_results_mutex_;//保护上面那玩意的锁，多个worker同时塞进来会坏掉的

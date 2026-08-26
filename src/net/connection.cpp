@@ -83,6 +83,7 @@ std::vector<PoolString> Connection::processBufferedData() {
 }
 
 SendResult Connection::sendReadyMessage() {
+	last_send_would_block_ = false;
 	if (hasSendError() == true)	return SendResult::Error;
 	if (send_buffer_.empty()) {
 		send_idx_ = 0;
@@ -91,6 +92,7 @@ SendResult Connection::sendReadyMessage() {
 	int n = send(fd_, send_buffer_.data() + send_idx_, send_buffer_.size() - send_idx_, 0);
 	if (n < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			last_send_would_block_ = true;
 			return SendResult::Pending;
 		}
 		return SendResult::Error;	

@@ -15,11 +15,11 @@ NOTE = os.environ.get("NF_NOTE", "")
 def _percentile(values: list[float], p: float) -> float:
     if not values:
         return 0.0
-    values.sort()
-    idx = int(len(values) * p - 1)
-    if idx < 0:
-        idx = 0
-    return values[idx]
+    if not 0 < p <= 1:
+        raise ValueError(f"percentile must be in (0, 1], got {p}")
+    ordered = sorted(values)
+    idx = min(len(ordered) - 1, math.ceil(len(ordered) * p) - 1)
+    return ordered[max(0, idx)]
 
 
 def _append_to_csv(
@@ -32,6 +32,7 @@ def _append_to_csv(
     p50: float,
     p95: float,
     p99: float,
+    p999: float,
     note: str = "",
 ) -> None:
     path = "benchmark_log.csv"
@@ -42,7 +43,8 @@ def _append_to_csv(
             writer.writerow([
                 "时间", "并发", "成功率%", "成功请求", "总耗时(s)",
                 "QPS", "平均延迟(ms)", "最大延迟(ms)", "被拒",
-                "消息/连接", "消息体(字节)", "p50(ms)", "p95(ms)", "p99(ms)", "备注",
+                "消息/连接", "消息体(字节)", "p50(ms)", "p95(ms)", "p99(ms)",
+                "p999(ms)", "备注",
             ])
         writer.writerow([
             time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -59,6 +61,7 @@ def _append_to_csv(
             f"{p50:.2f}",
             f"{p95:.2f}",
             f"{p99:.2f}",
+            f"{p999:.2f}",
             note,
         ])
 
@@ -103,14 +106,16 @@ async def bench(client: int) -> None:
     p50 = _percentile(latencies, 0.50)
     p95 = _percentile(latencies, 0.95)
     p99 = _percentile(latencies, 0.99)
+    p999 = _percentile(latencies, 0.999)
     print(
         f"client={client} "
         f"qps={qps:.1f} "
         f"p50={p50:.2f}ms "
         f"p95={p95:.2f}ms "
-        f"p99={p99:.2f}ms"
+        f"p99={p99:.2f}ms "
+        f"p999={p999:.2f}ms"
     )
-    _append_to_csv(client, success, elapsed, qps, avg_ms, max_ms, p50, p95, p99, NOTE)
+    _append_to_csv(client, success, elapsed, qps, avg_ms, max_ms, p50, p95, p99, p999, NOTE)
 
 
 async def main() -> None:

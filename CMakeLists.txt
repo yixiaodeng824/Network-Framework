@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 add_library(network_framework
     src/net/epoll_server.cpp
     src/net/connection.cpp
+    src/net/performance_metrics.cpp
     src/net/memory_pool.cpp
     src/net/io_uring_server.cpp
 
@@ -45,18 +46,46 @@ include(CTest)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 add_test(
-    NAME integration
+    NAME integration_echo
     COMMAND
         ${Python3_EXECUTABLE}
         -m pytest
-        ${CMAKE_SOURCE_DIR}/tests/integration
+        ${CMAKE_SOURCE_DIR}/tests/integration/test_echo.py
 )
 
 set_tests_properties(
-    integration
+    integration_echo
     PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>"
+        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>;NF_SERVER_MODE=echo"
+)
+
+add_test(
+    NAME integration_http
+    COMMAND
+        ${Python3_EXECUTABLE}
+        -m pytest
+        ${CMAKE_SOURCE_DIR}/tests/integration/test_http_demo.py
+)
+
+set_tests_properties(
+    integration_http
+    PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>;NF_SERVER_MODE=http"
+)
+
+add_executable(performance_metrics_test
+    tests/unit/performance_metrics_test.cpp
+)
+
+target_link_libraries(performance_metrics_test
+    PRIVATE network_framework
+)
+
+add_test(
+    NAME performance_metrics
+    COMMAND performance_metrics_test
 )
 
 add_custom_target(bench
@@ -75,13 +104,14 @@ add_custom_target(bench
 )
 add_custom_target(bench_mp
     COMMAND
-        \ -E env
-        NF_SERVER_BINARY=\$<TARGET_FILE:server>
-                -m benchmarks.echo_mp
+        ${CMAKE_COMMAND} -E env
+        NF_SERVER_BINARY=$<TARGET_FILE:server>
+        ${Python3_EXECUTABLE}
+        -m benchmarks.echo_mp
 
     DEPENDS server
 
     WORKING_DIRECTORY
-        
+        ${CMAKE_SOURCE_DIR}
     USES_TERMINAL
 )
