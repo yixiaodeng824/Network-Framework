@@ -28,4 +28,5 @@ private:
     std::vector<std::unique_ptr<EpollServer>> subs_;//包含的sub
     int run_robin_{0};//轮询计数器
     std::function<void(EpollServer &, ConnectionId, std::string_view)> handler_;
+    std::shared_ptr<PerformanceMetrics> metrics_;
 };

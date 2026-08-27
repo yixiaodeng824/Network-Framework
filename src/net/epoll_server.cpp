@@ -14,29 +14,80 @@
 #include <fcntl.h>
 #include <vector>
 #include <sys/eventfd.h>
+#include <chrono>
 using namespace std;
 static constexpr int RECVMMSG_BATCH = 8; // recvmmsg 一次系统调用最多收的段数(每段 4KB)
 atomic<bool> EpollServer::stop_{ false };
 
 
-EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout = 60) : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout)
+EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout,
+                         shared_ptr<PerformanceMetrics> metrics)
+    : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout),
+      metrics_(metrics ? move(metrics) : make_shared<PerformanceMetrics>())
 {
     //从epoll不需要监听事件，等mainreactor分发
     //创建 epoll 句柄
 	epfd_ = epoll_create(1);    
-    wake_up_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+	wake_up_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+}
+
+void EpollServer::logMetrics(const char* phase) const {
+    const PerformanceSnapshot snapshot = metrics_->snapshot();
+    const double elapsed = metrics_->elapsedSeconds();
+    const double qps = static_cast<double>(snapshot.requests) / elapsed;
+    const auto closeCount = [&snapshot](CloseReason reason) {
+        return snapshot.close_reasons[static_cast<size_t>(reason)];
+    };
+
+    LOG_INFO(
+        "performance_metrics phase=%s qps=%.1f requests=%llu "
+        "latency_avg_ms=%.3f p50_ms=%.3f p95_ms=%.3f p99_ms=%.3f p999_ms=%.3f "
+        "latency_max_ms=%.3f active_connections=%lld output_buffer_bytes=%lld "
+        "thread_pool_queue=%zu thread_pool_wait_avg_ms=%.3f thread_pool_wait_max_ms=%.3f",
+        phase, qps, static_cast<unsigned long long>(snapshot.requests),
+        PerformanceMetrics::averageLatencyMs(snapshot),
+        PerformanceMetrics::percentileMs(snapshot, 0.50),
+        PerformanceMetrics::percentileMs(snapshot, 0.95),
+        PerformanceMetrics::percentileMs(snapshot, 0.99),
+        PerformanceMetrics::percentileMs(snapshot, 0.999),
+        static_cast<double>(snapshot.max_latency_ns) / 1'000'000.0,
+        static_cast<long long>(snapshot.active_connections),
+        static_cast<long long>(snapshot.output_buffer_bytes),
+        pool_.queueSize(), pool_.queueWaitAverageMs(), pool_.queueWaitMaxMs());
+
+    LOG_INFO(
+        "performance_metrics counters recv_eagain=%llu send_eagain=%llu "
+        "accept_eagain=%llu accept_failures=%llu close_peer=%llu "
+        "close_heartbeat=%llu close_io=%llu close_frame=%llu close_send=%llu "
+        "close_overflow=%llu close_shutdown=%llu close_other=%llu",
+        static_cast<unsigned long long>(snapshot.recv_eagain),
+        static_cast<unsigned long long>(snapshot.send_eagain),
+        static_cast<unsigned long long>(snapshot.accept_eagain),
+        static_cast<unsigned long long>(snapshot.accept_failures),
+        static_cast<unsigned long long>(closeCount(CloseReason::PeerClosed)),
+        static_cast<unsigned long long>(closeCount(CloseReason::HeartbeatTimeout)),
+        static_cast<unsigned long long>(closeCount(CloseReason::IoError)),
+        static_cast<unsigned long long>(closeCount(CloseReason::FrameError)),
+        static_cast<unsigned long long>(closeCount(CloseReason::SendError)),
+        static_cast<unsigned long long>(closeCount(CloseReason::SendOverflow)),
+        static_cast<unsigned long long>(closeCount(CloseReason::ServerShutdown)),
+        static_cast<unsigned long long>(closeCount(CloseReason::Other)));
 }
 
 void EpollServer::epollserver_exit() {
 	LOG_INFO("server stopping, closing connections...");
+	if (sub_index_ == 0) {
+		logMetrics("stopping");
+	}
 	//先关闭线程池
 	pool_.close();
-	//clients 需要线程安全,所以加锁
-	{
-		for (auto& fd : fd_list) {
-			close(fd.first);
-		}
-		fd_list.clear();
+	vector<int> fds;
+	fds.reserve(fd_list.size());
+	for (const auto& fd : fd_list) {
+		fds.push_back(fd.first);
+	}
+	for (int fd : fds) {
+		closeConnection(fd, CloseReason::ServerShutdown);
 	}
 	//清理connection
 
@@ -56,12 +107,13 @@ void EpollServer::heartBeatCheck() {
 	}
 	for (auto fd : timeout_fds) {
 		LOG_INFO("heartbeat timeout, close fd: %d", fd);
-		closeConnection(fd);
+		closeConnection(fd, CloseReason::HeartbeatTimeout);
 	}
 }
 
 void EpollServer::run() {
 	int tick = 0;
+	auto next_metrics_report = chrono::steady_clock::now() + chrono::seconds(1);
 	while (!stop_) {
 		int n = epoll_wait(epfd_, events_, 1024, 100);//等待事件发生
 		if (n < 0) {
@@ -91,6 +143,10 @@ void EpollServer::run() {
 			//1s扫描一次
 			heartBeatCheck();
 			tick = 0;
+		}
+		if (sub_index_ == 0 && chrono::steady_clock::now() >= next_metrics_report) {
+			logMetrics("interval");
+			next_metrics_report = chrono::steady_clock::now() + chrono::seconds(1);
 		}
 	}
 	epollserver_exit();
@@ -133,17 +189,25 @@ void EpollServer::markPendingSend(int fd) {
     pending_send_fds_.push_back(fd);
 }
 
-void EpollServer::flushOne(int fd, const std::shared_ptr<Connection>& conn, uint64_t gen) {
+void EpollServer::flushOne(int fd, const std::shared_ptr<Connection>& conn, uint64_t gen,
+                           CloseReason close_reason) {
     if (!conn || conn->generation() != gen)
         return;
     bool ww = conn->isWriteWaiting();//必须在 sendReadyMessage 之前读(Pending 时它会置 true)
+    const size_t buffer_before = conn->pendingSendBufferSize();
     SendResult result = conn->sendReadyMessage();
+    const size_t buffer_after = conn->pendingSendBufferSize();
+    metrics_->addOutputBufferBytes(static_cast<int64_t>(buffer_after) -
+                                   static_cast<int64_t>(buffer_before));
+    if (conn->lastSendWouldBlock()) {
+        metrics_->recordSendEagain();
+    }
     conn->setPendingBatch(false);
     bool closing = conn->isClosing();
     if (result == SendResult::SentAll) {
         if (closing) {
             shutdown(fd, SHUT_WR);
-            closeConnection(fd);
+            closeConnection(fd, close_reason);
             return;
         }
         if (ww) {//之前挂了 EPOLLOUT,现在发完了,去掉(状态变化才 MOD)
@@ -164,7 +228,8 @@ void EpollServer::flushOne(int fd, const std::shared_ptr<Connection>& conn, uint
         }//已挂则等 socket 可写边沿再触发,不 MOD
     }
     else {
-        closeConnection(fd);
+        closeConnection(
+            fd, conn->hasSendError() ? CloseReason::SendOverflow : CloseReason::SendError);
         return;
     }
 }
@@ -205,21 +270,26 @@ void  EpollServer::handleClient(ConnectionId id) {
             }
             else if (n == 0) { peer_closed = true; break; }// 对端关闭(EOF)
             else {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    metrics_->recordRecvEagain();
+                    break;
+                }
                 if (errno == EINTR) continue;
                 io_error = true; break;
             }
         }
-        if (io_error) { closeConnection(fd); return; }
+        if (io_error) { closeConnection(fd, CloseReason::IoError); return; }
         vector<PoolString> msgs;
         bool frame_error = false;
         if (total > 0) {
             msgs = move(conn->processBufferedData());
             frame_error = conn->hasFrameError();
-            if (frame_error) { closeConnection(fd); return; }
+            if (frame_error) { closeConnection(fd, CloseReason::FrameError); return; }
             conn->setBatchHint(msgs.size() > 1);//多条消息才走批量发送
             for (auto& msg : msgs) {
+                const auto request_started = chrono::steady_clock::now();
                 if (handler_) handler_(*this, id, msg);    //锁外触发回调(回包进发送缓冲,由 sendInLoop 决定批量或直发)
+                metrics_->recordRequest(chrono::steady_clock::now() - request_started);
             }
             //回调可能增删连接;shared_ptr 保证对象保活,只需确认它仍是当前 fd 的主人(指针相等,零拷贝比较)
             it = fd_list.find(fd);
@@ -229,7 +299,7 @@ void  EpollServer::handleClient(ConnectionId id) {
         }
         if (peer_closed) {//关闭fd,可能fd对应的缓冲区仍然有东西,需要全发完再关
             conn->markClosing();
-            flushOne(fd, conn, id.generation);//ET:立刻尝试 flush,没发完由 EPOLLOUT 边沿续发
+            flushOne(fd, conn, id.generation, CloseReason::PeerClosed);//ET:立刻尝试 flush,没发完由 EPOLLOUT 边沿续发
             return;
         }
         if (need_rearm_read) {//ET 陷阱:没读到 EAGAIN 就停下会丢边沿,这里重新制造一次读边沿
@@ -253,12 +323,16 @@ void EpollServer::handleWrite(ConnectionId id) {
 	//	});
 }
 
-void EpollServer::closeConnection(int fd) {
+void EpollServer::closeConnection(int fd, CloseReason reason) {
+	auto it = fd_list.find(fd);
+	if (it == fd_list.end()) {
+		return;
+	}
 	LOG_INFO("close connection, fd: %d", fd);
 	epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
-	{
-		fd_list.erase(fd);
-	}
+	metrics_->addOutputBufferBytes(-static_cast<int64_t>(it->second->pendingSendBufferSize()));
+	metrics_->connectionClosed(reason);
+	fd_list.erase(it);
 	close(fd);
 }
 
@@ -276,6 +350,7 @@ void EpollServer::acceptNewConnection(int fd){
     auto conn = std::make_shared<Connection>(fd, &mem_pool_);
     conn->setGeneration(next_generation_.fetch_add(1));
     fd_list.insert({fd, std::move(conn)});
+    metrics_->connectionAccepted();
     LOG_DEBUG("new client fd=%d", fd);
     epoll_event ev;
     ev.data.fd = fd;
@@ -292,7 +367,11 @@ void EpollServer::sendInLoop(ConnectionId id, string_view msg){
     auto it = fd_list.find(fd);
     if (it == fd_list.end() || it->second->generation() != id.generation)
         return;
+    const size_t buffer_before = it->second->pendingSendBufferSize();
     it->second->sendMsgToSendBuf(msg); // 只塞缓冲,不真发
+    metrics_->addOutputBufferBytes(
+        static_cast<int64_t>(it->second->pendingSendBufferSize()) -
+        static_cast<int64_t>(buffer_before));
     //批量发送:积攒到阈值立即 flush,否则挂 pending 等本批次结束统一发
     //机会式批量:本批次拆出多条消息时积攒统一发(减少 send syscall);单条或达到阈值直接发
     if (it->second->sendBufferSize() >= kSendBatchThreshold || !it->second->batchHint())
@@ -330,7 +409,11 @@ void EpollServer::sendToRaw(ConnectionId id, string_view msg)
     auto it = fd_list.find(fd);
     if (it == fd_list.end() || it->second->generation() != id.generation)
         return;
+    const size_t buffer_before = it->second->pendingSendBufferSize();
     it->second->sendRawToSendBuf(msg);             // 原样塞(不加长度头)
+    metrics_->addOutputBufferBytes(
+        static_cast<int64_t>(it->second->pendingSendBufferSize()) -
+        static_cast<int64_t>(buffer_before));
     //批量发送:达到阈值立即发,否则积攒到本批次结束统一 flush
     if (it->second->sendBufferSize() >= kSendBatchThreshold)
         flushOne(fd, it->second, id.generation);
@@ -353,14 +436,26 @@ void EpollServer::sendTo(ConnectionId id, const string_view msg)
 }
 
 void EpollServer::broadcast(int exptr_fd, string_view msg) {
-	std::vector<int> toClose;
+	std::vector<std::pair<int, CloseReason>> toClose;
 	{
 		for (auto& it : fd_list) {
 			if (it.first == exptr_fd)	continue;
+			const size_t buffer_before = it.second->pendingSendBufferSize();
 			it.second->sendMsgToSendBuf(msg);
+			metrics_->addOutputBufferBytes(
+				static_cast<int64_t>(it.second->pendingSendBufferSize()) -
+				static_cast<int64_t>(buffer_before));
 		}
 		for (auto& it : fd_list) {
+			const size_t buffer_before = it.second->pendingSendBufferSize();
 			auto result = it.second->sendReadyMessage(); 
+			const size_t buffer_after = it.second->pendingSendBufferSize();
+			metrics_->addOutputBufferBytes(
+				static_cast<int64_t>(buffer_after) -
+				static_cast<int64_t>(buffer_before));
+			if (it.second->lastSendWouldBlock()) {
+				metrics_->recordSendEagain();
+			}
 			epoll_event nev;
 			nev.data.fd = it.first;
 			if (result == SendResult::SentAll) {
@@ -370,13 +465,15 @@ void EpollServer::broadcast(int exptr_fd, string_view msg) {
 				nev.events = EPOLLIN | EPOLLOUT | EPOLLET;
 			}
 			else {
-				toClose.push_back(it.first);
+				toClose.emplace_back(
+					it.first, it.second->hasSendError() ? CloseReason::SendOverflow : CloseReason::SendError);
+				continue;
 			}
 			epoll_ctl(epfd_, EPOLL_CTL_MOD, it.first, &nev);
 		}
 	}
-	for (auto fd : toClose) {              //  锁外,遍历结束才关
-		closeConnection(fd);
+	for (const auto& [fd, reason] : toClose) {              //  锁外,遍历结束才关
+		closeConnection(fd, reason);
 	}
 }
 
