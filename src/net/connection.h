@@ -33,8 +33,12 @@ public:
 	bool lastSendWouldBlock() const { return last_send_would_block_; }
 	void markClosing() { closing_ = true; }//标记正在关闭
 	bool isClosing()const { return closing_; }//判断是否正在关闭
-	void touchActive(){ last_active_ = time(nullptr); }//收到数据就刷新活动时间
-	bool isTimeout(time_t now, int sec)const { return now - last_active_ >= sec; }//计算是否超时
+	void touchActive(){ last_active_ = time(nullptr);
+        received_data = true;
+    }// 收到数据就刷新活动时间
+    bool hasRecvData() { return received_data; }
+    bool isHandShakeTimeout(time_t now, int sec) { return !received_data && now - last_active_ >= sec; }
+    bool isTimeout(time_t now, int sec)const { return now - last_active_ >= sec; }//计算客户端发送链接间隔是否超时
 	bool hasFrameError()const { return frame_error_; }
 	bool hasSendError()const { return send_overflow; }
     // public 区加两个函数(放在 hasSendError 下面):
@@ -69,4 +73,5 @@ private:
     bool last_send_would_block_{false};
     uint64_t generation_{0};//代际号，每个connection唯一，用来解决某fd退出时队列任务未被处理，新fd复用之后数据混乱问题
     MemoryPool *memory_pool_{nullptr};
+    bool received_data{false};
 };

@@ -9,7 +9,7 @@
 #include <atomic>
 class MainReactor{
 public:
-    MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count, bool affinity,size_t max_conn);
+    MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int handshake_timeout, int sub_count, bool affinity,size_t max_conn);
     void start();
     void setMessageHandler(std::function<void(EpollServer &, ConnectionId, std::string_view)> f);
     
@@ -21,6 +21,7 @@ private:
     int epfd_;
     int port_;
     int heartbeat_timeout_;
+    int handshake_timeout_{10};
     int sub_count_;
     bool affinity_{false};//绑核:accept 线程绑核 0,sub 线程依次绑核 1..N
 	epoll_event events_[1024];

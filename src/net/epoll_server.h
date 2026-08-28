@@ -27,7 +27,7 @@ class EpollServer
 public:
     EpollServer(int sub_index, ThreadPool &pool, int heartbeat_timeout,
                 std::shared_ptr<PerformanceMetrics> metrics = nullptr,
-                std::shared_ptr<std::atomic<size_t>> conn_count = nullptr);
+                std::shared_ptr<std::atomic<size_t>> conn_count = nullptr, int handshake_timeout = 10);
     void start();
 	static void handle_signal(int);
 	void epollserver_exit();
@@ -66,6 +66,7 @@ private:
 	epoll_event events_[1024];
 	std::map<int, std::shared_ptr<Connection>> fd_list; // shared_ptr 保活:回调期间连接不被回收,免重复查找
     int heartbeat_timeout_;
+    int handshake_timeout_{10};
     int sub_index_;   // sub 编号(日志/定位用)
     std::function<void(EpollServer &, ConnectionId, std::string_view)> handler_;
     std::shared_ptr<PerformanceMetrics> metrics_;

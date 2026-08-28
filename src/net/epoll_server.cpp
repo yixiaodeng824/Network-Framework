@@ -21,10 +21,11 @@ atomic<bool> EpollServer::stop_{ false };
 
 EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout,
                          shared_ptr<PerformanceMetrics> metrics,
-                         std::shared_ptr<std::atomic<size_t>> conn_count)
+                         std::shared_ptr<std::atomic<size_t>> conn_count,
+                        int handshake_timeout)
     : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout),
       metrics_(metrics ? move(metrics) : make_shared<PerformanceMetrics>()),
-      conn_count_(conn_count)
+      conn_count_(conn_count),handshake_timeout_(handshake_timeout)
 {
     //从epoll不需要监听事件，等mainreactor分发
     //创建 epoll 句柄
@@ -99,13 +100,18 @@ void EpollServer::epollserver_exit() {
 void EpollServer::heartBeatCheck() {
 	time_t now = time(nullptr);
 	vector<int> timeout_fds;
-	{
-		for (auto& [fd, conn] : fd_list) {
-			if (conn->isTimeout(now, heartbeat_timeout_)) {
-				timeout_fds.push_back(fd);
-			}
-		}
-	}
+    for (auto& [fd, conn] : fd_list) {
+        if(conn->hasRecvData()){
+            if (conn->isTimeout(now, heartbeat_timeout_)) {
+                timeout_fds.push_back(fd);
+            }
+        }
+        else{
+            if(conn->isHandShakeTimeout(now,handshake_timeout_)){
+                timeout_fds.push_back(fd);
+            }
+        }
+    }
 	for (auto fd : timeout_fds) {
 		LOG_INFO("heartbeat timeout, close fd: %d", fd);
 		closeConnection(fd, CloseReason::HeartbeatTimeout);
@@ -122,7 +128,6 @@ void EpollServer::run() {
 			LOG_ERROR("epoll_wait error: %s", strerror(errno));
 			continue;
 		}
-		//原本结构会让epollout事件优先级大于epollin，这个时候如果事件又读又有东西没写完，写的事件会优先被认领，然后直接等到下一轮
 		for (int i = 0;i < n;i++) {
 			int fd = events_[i].data.fd;
 			uint32_t ev = events_[i].events;
