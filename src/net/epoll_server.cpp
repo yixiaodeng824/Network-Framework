@@ -19,11 +19,12 @@ using namespace std;
 static constexpr int RECVMMSG_BATCH = 8; // recvmmsg 一次系统调用最多收的段数(每段 4KB)
 atomic<bool> EpollServer::stop_{ false };
 
-
 EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout,
-                         shared_ptr<PerformanceMetrics> metrics)
+                         shared_ptr<PerformanceMetrics> metrics,
+                         std::shared_ptr<std::atomic<size_t>> conn_count)
     : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout),
-      metrics_(metrics ? move(metrics) : make_shared<PerformanceMetrics>())
+      metrics_(metrics ? move(metrics) : make_shared<PerformanceMetrics>()),
+      conn_count_(conn_count)
 {
     //从epoll不需要监听事件，等mainreactor分发
     //创建 epoll 句柄
@@ -333,7 +334,9 @@ void EpollServer::closeConnection(int fd, CloseReason reason) {
 	metrics_->addOutputBufferBytes(-static_cast<int64_t>(it->second->pendingSendBufferSize()));
 	metrics_->connectionClosed(reason);
 	fd_list.erase(it);
-	close(fd);
+    if (conn_count_)
+        conn_count_->fetch_sub(1); // 连接关闭,全局计数减一
+    close(fd);
 }
 
 ConnectionId EpollServer::makeId(int fd){

@@ -19,9 +19,9 @@ static void pin_to_cpu(int cpu) {
     CPU_SET(cpu, &set);
     pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
 }
-MainReactor::MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count, bool affinity):
+MainReactor::MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count, bool affinity,size_t max_conn):
 port_(port), pool_(thread_pool), heartbeat_timeout_(heartbeat_timeout), sub_count_(sub_count), affinity_(affinity),
-metrics_(make_shared<PerformanceMetrics>())
+metrics_(make_shared<PerformanceMetrics>()),max_conn_(max_conn), conn_count_(make_shared<atomic<size_t>>(0))
 {
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     int fl = fcntl(listen_fd, F_GETFL, 0);
@@ -90,6 +90,7 @@ void MainReactor::acceptLoop(){
         for (int i = 0; i < n;i++){
             if(events_[i].data.fd==listen_fd){
                 while(true){
+                    
                     int client_fd = accept(listen_fd, nullptr, nullptr);
                     if(client_fd<0){
                         if(errno==EINTR)
@@ -101,6 +102,13 @@ void MainReactor::acceptLoop(){
                         metrics_->recordAcceptFailure();
                         LOG_ERROR("accept failed: %s", strerror(errno));
                         break;
+                    }
+                    if (max_conn_ > 0 && conn_count_->fetch_add(1) >= max_conn_)
+                    {
+                        conn_count_->fetch_sub(1); // 回退计数
+                        close(client_fd);          // 拒绝新连接
+                        LOG_WARN("max_conn reached, reject fd=%d", client_fd);
+                        continue;
                     }
                     //分发逻辑可以优化，做负载均衡
                     int idx = run_robin_++ % sub_count_; // 轮流分窗口

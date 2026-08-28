@@ -25,9 +25,10 @@ struct ConnectionId{
 class EpollServer
 {
 public:
-	EpollServer(int sub_index, ThreadPool& pool, int heartbeat_timeout,
-                std::shared_ptr<PerformanceMetrics> metrics = nullptr);
-	void start();
+    EpollServer(int sub_index, ThreadPool &pool, int heartbeat_timeout,
+                std::shared_ptr<PerformanceMetrics> metrics = nullptr,
+                std::shared_ptr<std::atomic<size_t>> conn_count = nullptr);
+    void start();
 	static void handle_signal(int);
 	void epollserver_exit();
 	void setMessageHandler(std::function<void(EpollServer&,ConnectionId,std::string_view)> f);
@@ -77,4 +78,5 @@ private:
     std::vector<int> pending_send_fds_;//批量发送:本批次积攒待 flush 的 fd(仅 loop 线程访问)
     const size_t kSendBatchThreshold{4096}; //发送缓冲积攒阈值,达到立即 flush
     const size_t kRecvBatchLimit{64 * 1024};//单次读事件最多收多少字节,防饿死
+    std::shared_ptr<std::atomic<size_t>> conn_count_; // 全局连接数(共享)
 };
