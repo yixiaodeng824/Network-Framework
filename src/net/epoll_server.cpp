@@ -77,8 +77,8 @@ void EpollServer::logMetrics(const char* phase) const {
 }
 
 void EpollServer::epollserver_exit() {
-	LOG_INFO("server stopping, closing connections...");
 	if (sub_index_ == 0) {
+		LOG_INFO("server stopping, closing connections...");
 		logMetrics("stopping");
 	}
 	//先关闭线程池
@@ -93,7 +93,9 @@ void EpollServer::epollserver_exit() {
 	}
 	//清理connection
 
-	LOG_INFO("server stopped.");
+	if (sub_index_ == 0) {
+		LOG_INFO("server stopped.");
+	}
 
 }
 
