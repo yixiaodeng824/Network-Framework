@@ -16,7 +16,9 @@ enum class CloseReason {
     SendOverflow,
     ServerShutdown,
     Other,
+    MaxBufferOverflow,
     Count,
+    
 };
 
 struct PerformanceSnapshot {

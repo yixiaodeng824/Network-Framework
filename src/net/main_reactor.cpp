@@ -19,9 +19,9 @@ static void pin_to_cpu(int cpu) {
     CPU_SET(cpu, &set);
     pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
 }
-MainReactor::MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int handshake_timeout, int sub_count, bool affinity,size_t max_conn):
+MainReactor::MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int handshake_timeout, int sub_count, bool affinity,size_t max_conn,size_t max_buffer_size):
 port_(port), pool_(thread_pool), heartbeat_timeout_(heartbeat_timeout), handshake_timeout_(handshake_timeout), sub_count_(sub_count), affinity_(affinity),
-metrics_(make_shared<PerformanceMetrics>()),max_conn_(max_conn), conn_count_(make_shared<atomic<size_t>>(0))
+metrics_(make_shared<PerformanceMetrics>()),max_conn_(max_conn), conn_count_(make_shared<atomic<size_t>>(0)),max_buffer_size_(max_buffer_size)
 {
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     int fl = fcntl(listen_fd, F_GETFL, 0);
@@ -55,7 +55,7 @@ void MainReactor::start(){
     epoll_ctl(epfd_, EPOLL_CTL_ADD, listen_fd, &nev);
 
     for (int i = 0; i < sub_count_;i++){
-        subs_.push_back(make_unique<EpollServer>(i, pool_, heartbeat_timeout_, metrics_, conn_count_, handshake_timeout_));
+        subs_.push_back(make_unique<EpollServer>(i, pool_, heartbeat_timeout_, metrics_, conn_count_, handshake_timeout_,max_buffer_size_));
         //设置回调函数
         subs_[i]->setMessageHandler(handler_);
         //分配线程，启动sub

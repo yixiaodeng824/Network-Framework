@@ -16,7 +16,8 @@ int main(int argc,char* argv[]) {
 	string mode = "http"; // http=HTTP 200 demo / echo=回显 / io_uring，用 -m 切换
 	bool affinity = false;   // -a 绑核（每核独立，推荐压测时开启）
     size_t max_conn = 0;
-    int handshake_timeout = 10;//最大连接数
+    int handshake_timeout = 10;
+    size_t max_buffer_size = 0;//最大连接数
     for (int i = 1; i < argc; i++) {
 		if ((strcmp(argv[i], "-p") == 0 || (strcmp(argv[i], "--port") == 0) )){
 			if (i+1 >= argc) {
@@ -86,6 +87,14 @@ int main(int argc,char* argv[]) {
                 handshake_timeout = atoi(argv[i + 1]);
             }
         }
+        if (strcmp(argv[i], "--max-buffer") == 0) {
+            if (i + 1 >= argc) {
+                LOG_DEBUG("no max_buffer");
+                break;
+            } else {
+                max_buffer_size = atoi(argv[i + 1]);
+            }
+        }
     }
 	if (mode == "io_uring") {
 		IoUringServer srv(port, threadnum, heartbeats, affinity ? 0 : -1);
@@ -94,7 +103,7 @@ int main(int argc,char* argv[]) {
 	}
 	if (sub_count <= 0) sub_count = 2;
     ThreadPool tp(threadnum);
-    MainReactor main(port, tp, heartbeats, handshake_timeout, sub_count, affinity,max_conn);
+    MainReactor main(port, tp, heartbeats, handshake_timeout, sub_count, affinity,max_conn,max_buffer_size);
     if (mode == "http") {
         main.setMessageHandler([](EpollServer &server, ConnectionId id, std::string_view msg) {
             std::string resp =

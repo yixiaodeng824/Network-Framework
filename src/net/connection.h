@@ -54,6 +54,8 @@ public:
     void setWriteWaiting(bool v) { write_waiting_ = v; }
     bool batchHint() const { return batch_hint_; }//本批次拆出多条消息时提示批量发送
     void setBatchHint(bool v) { batch_hint_ = v; }
+    size_t send_buf_size()const { return send_buffer_.size(); }
+    size_t recv_buf_size()const { return recv_buffer_.size(); }
 
 private:
 	int fd_;

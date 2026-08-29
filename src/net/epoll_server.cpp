@@ -22,10 +22,10 @@ atomic<bool> EpollServer::stop_{ false };
 EpollServer::EpollServer(int subindex, ThreadPool &pool, int heartbeat_timeout,
                          shared_ptr<PerformanceMetrics> metrics,
                          std::shared_ptr<std::atomic<size_t>> conn_count,
-                        int handshake_timeout)
+                        int handshake_timeout,size_t max_buffer_size)
     : sub_index_(subindex), pool_(pool), heartbeat_timeout_(heartbeat_timeout),
       metrics_(metrics ? move(metrics) : make_shared<PerformanceMetrics>()),
-      conn_count_(conn_count),handshake_timeout_(handshake_timeout)
+      conn_count_(conn_count),handshake_timeout_(handshake_timeout),max_buffer_size_(max_buffer_size)
 {
     //从epoll不需要监听事件，等mainreactor分发
     //创建 epoll 句柄
@@ -100,7 +100,17 @@ void EpollServer::epollserver_exit() {
 void EpollServer::heartBeatCheck() {
 	time_t now = time(nullptr);
 	vector<int> timeout_fds;
-    for (auto& [fd, conn] : fd_list) {
+    size_t total = 0;
+    int victim = -1;
+    size_t max_size = 0;
+    for (auto& [fd, conn] : fd_list) {//要是总大小超，则直接踢掉最大的链接
+        size_t size = conn->send_buf_size() + conn->recv_buf_size();
+        total += size;
+        if(size > max_size){
+            max_size = size;
+            victim = fd;
+        }
+        //判断是否超时
         if(conn->hasRecvData()){
             if (conn->isTimeout(now, heartbeat_timeout_)) {
                 timeout_fds.push_back(fd);
@@ -112,7 +122,11 @@ void EpollServer::heartBeatCheck() {
             }
         }
     }
-	for (auto fd : timeout_fds) {
+    if (max_buffer_size_ > 0 && total > max_buffer_size_ && victim >= 0)
+    {
+        timeout_fds.push_back(victim);
+    }
+    for (auto fd : timeout_fds) {
 		LOG_INFO("heartbeat timeout, close fd: %d", fd);
 		closeConnection(fd, CloseReason::HeartbeatTimeout);
 	}
