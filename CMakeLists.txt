@@ -13,6 +13,7 @@ add_library(network_framework
     src/net/memory_pool.cpp
     src/net/io_uring_server.cpp
     src/net/performance_metrics.cpp
+    src/net/http_server.cpp
 
     src/log/Logger.cpp
     src/net/main_reactor.cpp 

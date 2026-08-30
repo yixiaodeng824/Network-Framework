@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include "http_server.h"
 using namespace std;
 
 int main(int argc,char* argv[]) {
@@ -102,18 +103,24 @@ int main(int argc,char* argv[]) {
 		return 0;
 	}
 	if (sub_count <= 0) sub_count = 2;
+
+    HttpRouter router;
+    router.get("/", [](const HttpRequest &, HttpResponse &resp)
+               { resp.json(R"({"hello":"world"})"); });
+    router.get("/api/messages", [](const HttpRequest &, HttpResponse &resp)
+               { resp.json(R"({"messages":[]})"); });
+    
     ThreadPool tp(threadnum);
     MainReactor main(port, tp, heartbeats, handshake_timeout, sub_count, affinity,max_conn,max_buffer_size);
     if (mode == "http") {
-        main.setMessageHandler([](EpollServer &server, ConnectionId id, std::string_view msg) {
-            std::string resp =
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Length: 2\r\n"
-                "Content-Type: text/plain\r\n"
-                "\r\n"
-                "ok";
-            server.sendToRaw(id, resp); // 原样发送,不加长度头
-        });
+        main.setMessageHandler([&router](EpollServer &server, ConnectionId id, std::string_view msg)
+                               {
+                                   HttpRequest req;
+                                   HttpResponse resp;
+                                   ParseHttpRequest(msg, req);            // ① 解析请求
+                                   router.route(req, resp);               // ② 路由分发(调用业务 handler)
+                                   server.sendToRaw(id, resp.ToString()); // ③ 发响应
+                               });
     } else {
         main.setMessageHandler([](EpollServer &server, ConnectionId id, std::string_view msg) {
             server.sendTo(id, msg); // 回显
