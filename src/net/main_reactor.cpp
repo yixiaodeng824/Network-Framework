@@ -103,7 +103,8 @@ void MainReactor::acceptLoop(){
                         LOG_ERROR("accept failed: %s", strerror(errno));
                         break;
                     }
-                    if (max_conn_ > 0 && conn_count_->fetch_add(1) >= max_conn_)
+                    const size_t prev_count = conn_count_->fetch_add(1);
+                    if (max_conn_ > 0 && prev_count >= max_conn_)
                     {
                         conn_count_->fetch_sub(1); // 回退计数
                         close(client_fd);          // 拒绝新连接

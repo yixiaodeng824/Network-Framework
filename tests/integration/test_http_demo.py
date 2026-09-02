@@ -116,3 +116,14 @@ def test_malicious_content_length() -> None:
         except ConnectionResetError:
             return  # RST 也算断开
         assert got == b"", f"服务器应断开连接，却收到了数据: {got!r}"
+
+# ========================================
+# /health liveness probe (issue #47)
+# ========================================
+def test_health_probe() -> None:
+    """GET /health liveness probe: 200 when the server is alive."""
+    with connect() as sock:
+        sock.sendall(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        resp = recv_http_response(sock)
+        assert resp.startswith(b"HTTP/1.1 200 OK")
+        assert b'"status":"ok"' in resp

@@ -27,6 +27,8 @@ static const char *reason_phrase(int status)
         return "Not Found";
     case 500:
         return "Internal Server Error";
+    case 503:
+        return "Service Unavailable";
     default:
         return "OK";
     }

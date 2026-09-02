@@ -38,6 +38,7 @@ public:
     void broadcast(int exptr_fd, std::string_view msg);    // 广播
     void acceptNewConnection(int fd);//从主epoll接fd进来加代际，代替acceptnewclient
     void stopSub() { stop_ = true; }
+    size_t globalConnCount() const { return conn_count_ ? conn_count_->load(std::memory_order_relaxed) : 0; } // /health probe: global conn count
     void queueInLoop(std::function<void()> cb);//worker干完活投递给主线程，主线程再发
     static bool shouldStop() { return stop_; }
     void logMetrics(const char* phase) const;
