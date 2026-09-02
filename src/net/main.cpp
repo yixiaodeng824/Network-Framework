@@ -98,7 +98,7 @@ int main(int argc,char* argv[]) {
         }
     }
 	if (mode == "io_uring") {
-		IoUringServer srv(port, threadnum, heartbeats, affinity ? 0 : -1);
+		IoUringServer srv(port, threadnum, heartbeats, affinity ? 0 : -1, sub_count);
 		srv.start();
 		return 0;
 	}
@@ -113,11 +113,23 @@ int main(int argc,char* argv[]) {
     ThreadPool tp(threadnum);
     MainReactor main(port, tp, heartbeats, handshake_timeout, sub_count, affinity,max_conn,max_buffer_size);
     if (mode == "http") {
-        main.setMessageHandler([&router](EpollServer &server, ConnectionId id, std::string_view msg)
+        main.setMessageHandler([&router, max_conn](EpollServer &server, ConnectionId id, std::string_view msg)
                                {
                                    HttpRequest req;
                                    HttpResponse resp;
                                    ParseHttpRequest(msg, req);            // ① 解析请求
+                                   if (req.method == "GET" && req.path == "/health") {
+                                       // liveness probe: 200 when alive; 503 when overloaded (conn >= max_conn)
+                                       size_t cur = server.globalConnCount();
+                                       bool overloaded = max_conn > 0 && cur >= max_conn;
+                                       std::string body = "{\"status\":\"" + std::string(overloaded ? "overloaded" : "ok") +
+                                                          "\",\"connections\":" + std::to_string(cur) +
+                                                          ",\"max_conn\":" + std::to_string(max_conn) + "}";
+                                       resp.status = overloaded ? 503 : 200;
+                                       resp.json(body);
+                                       server.sendToRaw(id, resp.ToString());
+                                       return;
+                                   }
                                    router.route(req, resp);               // ② 路由分发(调用业务 handler)
                                    server.sendToRaw(id, resp.ToString()); // ③ 发响应
                                });
