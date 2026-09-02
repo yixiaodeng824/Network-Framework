@@ -12,6 +12,8 @@ add_library(network_framework
     src/net/connection.cpp
     src/net/memory_pool.cpp
     src/net/io_uring_server.cpp
+    src/net/performance_metrics.cpp
+    src/net/http_server.cpp
 
     src/log/Logger.cpp
     src/net/main_reactor.cpp 
@@ -45,18 +47,48 @@ include(CTest)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 add_test(
-    NAME integration
+    NAME integration_echo
     COMMAND
         ${Python3_EXECUTABLE}
         -m pytest
-        ${CMAKE_SOURCE_DIR}/tests/integration
+        ${CMAKE_SOURCE_DIR}/tests/integration/test_echo.py
 )
 
 set_tests_properties(
-    integration
+    integration_echo
     PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>"
+        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>;NF_SERVER_MODE=echo"
+)
+
+add_test(
+    NAME integration_http
+    COMMAND
+        ${Python3_EXECUTABLE}
+        -m pytest
+        ${CMAKE_SOURCE_DIR}/tests/integration/test_http_demo.py
+)
+
+set_tests_properties(
+    integration_http
+    PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>;NF_SERVER_MODE=http"
+)
+
+add_test(
+    NAME integration_multi_reactor
+    COMMAND
+        ${Python3_EXECUTABLE}
+        -m pytest
+        ${CMAKE_SOURCE_DIR}/tests/integration/test_multi_reactor.py
+)
+
+set_tests_properties(
+    integration_multi_reactor
+    PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        ENVIRONMENT "NF_SERVER_BINARY=$<TARGET_FILE:server>;NF_SERVER_MODE=http"
 )
 
 add_custom_target(bench

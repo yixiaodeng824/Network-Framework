@@ -6,9 +6,10 @@
 #include <thread>
 #include <memory>
 #include <string_view>
+#include <atomic>
 class MainReactor{
 public:
-    MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int sub_count, bool affinity);
+    MainReactor(int port, ThreadPool &thread_pool, int heartbeat_timeout, int handshake_timeout, int sub_count, bool affinity,size_t max_conn,size_t max_buffer_size);
     void start();
     void setMessageHandler(std::function<void(EpollServer &, ConnectionId, std::string_view)> f);
     
@@ -20,6 +21,7 @@ private:
     int epfd_;
     int port_;
     int heartbeat_timeout_;
+    int handshake_timeout_{10};
     int sub_count_;
     bool affinity_{false};//绑核:accept 线程绑核 0,sub 线程依次绑核 1..N
 	epoll_event events_[1024];
@@ -28,4 +30,10 @@ private:
     std::vector<std::unique_ptr<EpollServer>> subs_;//包含的sub
     int run_robin_{0};//轮询计数器
     std::function<void(EpollServer &, ConnectionId, std::string_view)> handler_;
+    std::shared_ptr<PerformanceMetrics> metrics_;
+    //最大连接数
+    size_t max_conn_{0};
+    std::shared_ptr<std::atomic<size_t>> conn_count_;
+    size_t max_buffer_size_{0};
 };
+

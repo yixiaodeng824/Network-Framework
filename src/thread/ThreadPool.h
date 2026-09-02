@@ -5,6 +5,8 @@
 #include <memory>
 #include <future>
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <utility>
 class ThreadPool
 {
@@ -17,9 +19,11 @@ public:
         using Ret = decltype(f());
         auto prom = std::make_shared<std::promise<Ret>>();//prom本质是不可复制的，但是如果用function，他会强制要求内部东西可以复制
         std::future<Ret> fut = prom->get_future();
+        auto enqueued_at = std::chrono::steady_clock::now();
 
         msg_que_.push(
-            [prom, f = std::forward<Func>(f)]() mutable {
+            [this, enqueued_at, prom, f = std::forward<Func>(f)]() mutable {
+                    recordQueueWait(enqueued_at);
                     prom->set_value(f());        // 任务有结果:顺手把结果带上
             }
         );
@@ -27,12 +31,24 @@ public:
     }
     template<typename Func>
     void post(Func&& f) {
-        msg_que_.push([f = std::forward<Func>(f)]()mutable {f(); });//允许捕获之后修改自己的变量
+        auto enqueued_at = std::chrono::steady_clock::now();
+        msg_que_.push([this, enqueued_at, f = std::forward<Func>(f)]() mutable {
+            recordQueueWait(enqueued_at);
+            f();
+        });//允许捕获之后修改自己的变量
     }
     void close();
+    size_t queueSize() const { return msg_que_.size(); }
+    double queueWaitAverageMs() const;
+    double queueWaitMaxMs() const;
+
 private:
+    void recordQueueWait(std::chrono::steady_clock::time_point enqueued_at);
+
     MessageQueue msg_que_{65536};
 	std::vector<std::unique_ptr<WorkThread>> workers_;
     std::atomic<bool> exit_{false};
+    std::atomic<uint64_t> queue_wait_samples_{0};
+    std::atomic<uint64_t> queue_wait_ns_{0};
+    std::atomic<uint64_t> queue_wait_max_ns_{0};
 };
-

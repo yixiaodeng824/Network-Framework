@@ -41,3 +41,10 @@ docs/
 # VMware 共享文件夹临时文件
 .fuse_hidden*
 wrk/
+
+# 个人环境
+.venv/
+.env
+skills-lock.json
+.agents/
+AGENTS.md
